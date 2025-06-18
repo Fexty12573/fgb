@@ -377,12 +377,20 @@ void fgb_rlca(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.flags.c = cpu->regs.a >> 7;
     cpu->regs.a <<= 1;
     cpu->regs.a |= cpu->regs.flags.c;
+
+    cpu->regs.flags.z = 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
 }
 
 void fgb_rrca(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.flags.c = cpu->regs.a & 1;
     cpu->regs.a >>= 1;
     cpu->regs.a |= cpu->regs.flags.c << 7;
+
+    cpu->regs.flags.z = 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
 }
 
 void fgb_rla(fgb_cpu* cpu, const fgb_instruction* ins) {
@@ -390,6 +398,10 @@ void fgb_rla(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.flags.c = cpu->regs.a >> 7;
     cpu->regs.a <<= 1;
     cpu->regs.a |= c;
+
+    cpu->regs.flags.z = 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
 }
 
 void fgb_rra(fgb_cpu* cpu, const fgb_instruction* ins) {
@@ -397,6 +409,10 @@ void fgb_rra(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.flags.c = cpu->regs.a & 1;
     cpu->regs.a >>= 1;
     cpu->regs.a |= c << 7;
+
+    cpu->regs.flags.z = 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
 }
 
 void fgb_daa(fgb_cpu* cpu, const fgb_instruction* ins) {
@@ -407,15 +423,14 @@ void fgb_daa(fgb_cpu* cpu, const fgb_instruction* ins) {
         if (cpu->regs.flags.c) adj += 0x60;
         a -= adj;
     } else {
-        if (cpu->regs.flags.h || (cpu->regs.a & 0xF) > 0x9) adj += 0x6;
-        if (cpu->regs.flags.c || cpu->regs.a > 0x99) adj += 0x60;
+        if (cpu->regs.flags.h || (a & 0xF) > 0x9) adj += 0x6;
+        if (cpu->regs.flags.c || a > 0x99) { adj += 0x60; cpu->regs.flags.c = 1; }
         a += adj;
     }
 
     cpu->regs.a = a;
     cpu->regs.flags.z = cpu->regs.a == 0;
     cpu->regs.flags.h = 0;
-    cpu->regs.flags.c = a > 0xFF;
 }
 
 void fgb_cpl(fgb_cpu* cpu, const fgb_instruction* ins) {

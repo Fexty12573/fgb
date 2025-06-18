@@ -38,10 +38,15 @@ static void mock_cpu_init(size_t tester_ins_mem_size, uint8_t* tester_ins_mem) {
 }
 
 void mock_cpu_set_state(struct state* state) {
-    cpu->regs.af = state->reg16.AF;
-    cpu->regs.bc = state->reg16.BC;
-    cpu->regs.de = state->reg16.DE;
-    cpu->regs.hl = state->reg16.HL;
+    cpu->regs.a = state->reg8.A;
+    cpu->regs.f = state->reg8.F;
+    cpu->regs.b = state->reg8.B;
+    cpu->regs.c = state->reg8.C;
+    cpu->regs.d = state->reg8.D;
+    cpu->regs.e = state->reg8.E;
+    cpu->regs.h = state->reg8.H;
+    cpu->regs.l = state->reg8.L;
+
     cpu->regs.sp = state->SP;
     cpu->regs.pc = state->PC;
     cpu->halted = state->halted;
@@ -51,10 +56,15 @@ void mock_cpu_set_state(struct state* state) {
 }
 
 void mock_cpu_get_state(struct state* state) {
-    state->reg16.AF = cpu->regs.af;
-    state->reg16.BC = cpu->regs.bc;
-    state->reg16.DE = cpu->regs.de;
-    state->reg16.HL = cpu->regs.hl;
+    state->reg8.A = cpu->regs.a;
+    state->reg8.F = cpu->regs.f;
+    state->reg8.B = cpu->regs.b;
+    state->reg8.C = cpu->regs.c;
+    state->reg8.D = cpu->regs.d;
+    state->reg8.E = cpu->regs.e;
+    state->reg8.H = cpu->regs.h;
+    state->reg8.L = cpu->regs.l;
+
     state->SP = cpu->regs.sp;
     state->PC = cpu->regs.pc;
     state->halted = cpu->halted;
