@@ -8,7 +8,6 @@
 #include <ulog.h>
 
 
-static int fgb_cpu_execute(fgb_cpu* cpu);
 static uint8_t fgb_cpu_fetch(fgb_cpu* cpu);
 static uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu);
 #define fgb_mem_write(cpu, addr, value) (cpu)->memory.write_u8(&(cpu)->memory, addr, value)
@@ -71,9 +70,26 @@ fgb_cpu* fgb_cpu_create(void) {
         return NULL;
     }
 
+    memset(cpu, 0, sizeof(fgb_cpu));
+
+    fgb_mem_init(&cpu->memory, NULL);
     fgb_cpu_reset(cpu);
 
-    return NULL;
+    return cpu;
+}
+
+fgb_cpu* fgb_cpu_create_with(const fgb_mem_ops* mem_ops) {
+    fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
+    if (!cpu) {
+        return NULL;
+    }
+
+    memset(cpu, 0, sizeof(fgb_cpu));
+
+    fgb_mem_init(&cpu->memory, mem_ops);
+    fgb_cpu_reset(cpu);
+
+    return cpu;
 }
 
 void fgb_cpu_destroy(fgb_cpu* cpu) {
@@ -81,7 +97,9 @@ void fgb_cpu_destroy(fgb_cpu* cpu) {
 }
 
 void fgb_cpu_reset(fgb_cpu* cpu) {
-    memset(cpu, 0, sizeof(fgb_cpu));
+    memset(&cpu->regs, 0, sizeof(cpu->regs));
+    cpu->halted = false;
+    cpu->stopped = false;
 
     cpu->regs.pc = 0x0100;
     cpu->regs.sp = 0xFFFE;

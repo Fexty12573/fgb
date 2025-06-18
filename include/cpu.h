@@ -71,9 +71,11 @@ typedef struct fgb_cpu {
 
 
 fgb_cpu* fgb_cpu_create(void);
+fgb_cpu* fgb_cpu_create_with(const fgb_mem_ops* mem_ops);
 void fgb_cpu_destroy(fgb_cpu* cpu);
 
 void fgb_cpu_reset(fgb_cpu* cpu);
-void fgb_cpu_step(fgb_cpu* cpu);
+void fgb_cpu_step(fgb_cpu* cpu); // Executes FGB_CYCLES_PER_FRAME cycles
+int fgb_cpu_execute(fgb_cpu* cpu); // Executes a single instruction and returns its cycles
 
 #endif // FGB_CPU_H
