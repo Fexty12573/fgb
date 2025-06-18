@@ -28,4 +28,8 @@ typedef struct fgb_instruction {
 
 extern fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT];
 
+static inline fgb_instruction* fgb_instruction_get(uint8_t opcode) {
+    return fgb_instruction_table + opcode;
+}
+
 #endif // FGB_INSTRUCTION_H

@@ -1,10 +1,16 @@
 #include "cpu.h"
+#include "instruction.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <ulog.h>
+
 
 static int fgb_cpu_execute(fgb_cpu* cpu);
+static uint8_t fgb_cpu_fetch(fgb_cpu* cpu);
+static uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu);
 
 struct fgb_init_value {
     uint16_t addr;
@@ -52,6 +58,7 @@ static const struct fgb_init_value fgb_init_table[] = {
     { 0xFF49, 0xFF }, // OBP1
     { 0xFF4A, 0x00 }, // WY
     { 0xFF4B, 0x00 }, // WX
+    { 0xFFFF, 0x00 }, // IE
 };
 
 
@@ -90,10 +97,43 @@ void fgb_cpu_step(fgb_cpu* cpu) {
     int cycles = 0;
 
     while (cycles < FGB_CYCLES_PER_FRAME) {
-        
+        cycles += fgb_cpu_execute(cpu);
     }
 }
 
 int fgb_cpu_execute(fgb_cpu* cpu) {
-    return 0;
+    const uint8_t opcode = fgb_cpu_fetch(cpu);
+    const fgb_instruction* instruction = fgb_instruction_get(opcode);
+    assert(instruction->opcode == opcode);
+
+    switch (instruction->operand_size) {
+    case 0:
+        instruction->exec_0(cpu, instruction);
+        break;
+
+    case 1:
+        instruction->exec_1(cpu, instruction, fgb_cpu_fetch(cpu));
+        break;
+
+    case 2:
+        instruction->exec_2(cpu, instruction, fgb_cpu_fetch_u16(cpu));
+        break;
+
+    default:
+        log_error("Invalid operand size: %d", instruction->operand_size);
+        cpu->halted = true;
+        return FGB_CYCLES_PER_FRAME;
+    }
+
+    return instruction->cycles;
+}
+
+uint8_t fgb_cpu_fetch(fgb_cpu* cpu) {
+    return fgb_mem_read(&cpu->memory, cpu->regs.pc++);
+}
+
+uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu) {
+    const uint16_t value = fgb_mem_read_u16(&cpu->memory, cpu->regs.pc);
+    cpu->regs.pc += 2;
+    return value;
 }
