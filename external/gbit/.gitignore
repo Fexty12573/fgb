@@ -1,0 +1,4 @@
+build/
+gbit
+libgbit.so
+__pycache__/

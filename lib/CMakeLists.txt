@@ -13,3 +13,4 @@ add_library(libfgb STATIC ${SOURCES})
 
 target_link_libraries(libfgb PUBLIC microlog::microlog)
 target_include_directories(libfgb PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(libfgb PRIVATE ${CMAKE_SOURCE_DIR}/include/fgb)

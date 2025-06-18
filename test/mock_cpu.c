@@ -1,0 +1,95 @@
+#include <string.h>
+
+#include <tester.h>
+#include <fgb/cpu.h>
+
+static fgb_cpu* cpu;
+static int mem_access_count;
+static struct mem_access mem_accesses[16];
+
+static void mock_cpu_init(size_t tester_ins_mem_size, uint8_t* tester_ins_mem);
+static void mock_cpu_set_state(struct state* state);
+static void mock_cpu_get_state(struct state* state);
+static int mock_cpu_step(void);
+static uint8_t mock_mmu_read(const fgb_memory* memory, uint16_t addr);
+static void mock_mmu_write(fgb_memory* memory, uint16_t addr, uint8_t value);
+static uint16_t mock_mmu_read16(const fgb_memory* memory, uint16_t addr);
+static void mock_mmu_reset(fgb_memory* memory);
+
+struct tester_operations mock_cpu_ops = {
+    .init = mock_cpu_init,
+    .set_state = mock_cpu_set_state,
+    .get_state = mock_cpu_get_state,
+    .step = mock_cpu_step,
+};
+
+static void mock_cpu_init(size_t tester_ins_mem_size, uint8_t* tester_ins_mem) {
+    const fgb_mem_ops ops = {
+        .reset = mock_mmu_reset,
+        .write_u8 = mock_mmu_write,
+        .read_u8 = mock_mmu_read,
+        .read_u16 = mock_mmu_read16,
+        .data = tester_ins_mem,
+        .data_size = tester_ins_mem_size
+    };
+
+    cpu = fgb_cpu_create_with(&ops);
+    mem_access_count = 0;
+}
+
+void mock_cpu_set_state(struct state* state) {
+    cpu->regs.af = state->reg16.AF;
+    cpu->regs.bc = state->reg16.BC;
+    cpu->regs.de = state->reg16.DE;
+    cpu->regs.hl = state->reg16.HL;
+    cpu->regs.sp = state->SP;
+    cpu->regs.pc = state->PC;
+    cpu->halted = state->halted;
+    cpu->ime = state->interrupts_master_enabled;
+
+    mem_access_count = state->num_mem_accesses;
+}
+
+void mock_cpu_get_state(struct state* state) {
+    state->reg16.AF = cpu->regs.af;
+    state->reg16.BC = cpu->regs.bc;
+    state->reg16.DE = cpu->regs.de;
+    state->reg16.HL = cpu->regs.hl;
+    state->SP = cpu->regs.sp;
+    state->PC = cpu->regs.pc;
+    state->halted = cpu->halted;
+    state->interrupts_master_enabled = cpu->ime;
+
+    state->num_mem_accesses = mem_access_count;
+    memcpy(state->mem_accesses, mem_accesses, sizeof(struct mem_access) * mem_access_count);
+}
+
+int mock_cpu_step(void) {
+    return fgb_cpu_execute(cpu);
+}
+
+uint8_t mock_mmu_read(const fgb_memory* memory, uint16_t addr) {
+    if (addr < memory->ext_data_size) {
+        return memory->ext_data[addr];
+    }
+
+    return 0xAA;
+}
+
+void mock_mmu_write(fgb_memory* memory, uint16_t addr, uint8_t value) {
+    (void)memory;
+    struct mem_access* access = &mem_accesses[mem_access_count++];
+    access->type = MEM_ACCESS_WRITE;
+    access->addr = addr;
+    access->val = value;
+}
+
+uint16_t mock_mmu_read16(const fgb_memory* memory, uint16_t addr) {
+    const uint16_t lower = mock_mmu_read(memory, addr);
+    const uint16_t upper = mock_mmu_read(memory, addr + 1);
+    return (upper << 8) | lower;
+}
+
+void mock_mmu_reset(fgb_memory* memory) {
+    (void)memory; // Don't do anything
+}

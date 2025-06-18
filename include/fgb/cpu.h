@@ -65,6 +65,7 @@ typedef struct fgb_cpu {
     
     uint8_t screen[FGB_SCREEN_WIDTH * FGB_SCREEN_HEIGHT * 3]; // 3 bytes per pixel (RGB)
 
+    bool ime;
     bool halted;
     bool stopped;
 } fgb_cpu;
