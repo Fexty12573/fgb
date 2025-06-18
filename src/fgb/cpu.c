@@ -137,3 +137,147 @@ uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu) {
     cpu->regs.pc += 2;
     return value;
 }
+
+
+// --------------------------------------------------------------
+// Instruction execution functions
+// --------------------------------------------------------------
+
+static inline uint8_t fgb_inc_u8(fgb_cpu* cpu, uint8_t value) {
+    cpu->regs.flags.h = (value & 0xF) == 0xF;
+    value++;
+    cpu->regs.flags.z = value == 0;
+    cpu->regs.flags.n = 0;
+
+    return value;
+}
+
+static inline uint8_t fgb_dec_u8(fgb_cpu* cpu, uint8_t value) {
+    cpu->regs.flags.h = (value & 0xF) == 0;
+    value--;
+    cpu->regs.flags.z = value == 0;
+    cpu->regs.flags.n = 1;
+    return value;
+}
+
+void fgb_nop(fgb_cpu* cpu, const fgb_instruction* ins) {
+    // No operation, just a placeholder
+    (void)cpu;
+    (void)ins;
+}
+
+void fgb_ld_bc_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    cpu->regs.bc = operand;
+}
+
+void fgb_ld_de_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    cpu->regs.de = operand;
+}
+
+void fgb_ld_hl_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    cpu->regs.hl = operand;
+}
+
+void fgb_ld_sp_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    cpu->regs.sp = operand;
+}
+
+void fgb_ld_p_bc_a(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_mem_write(&cpu->memory, cpu->regs.bc, cpu->regs.a);
+}
+
+void fgb_ld_p_de_a(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_mem_write(&cpu->memory, cpu->regs.de, cpu->regs.a);
+}
+
+void fgb_ld_p_hli_a(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_mem_write(&cpu->memory, cpu->regs.hl++, cpu->regs.a);
+}
+
+void fgb_ld_p_hld_a(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_mem_write(&cpu->memory, cpu->regs.hl--, cpu->regs.a);
+}
+
+void fgb_inc_bc(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.bc++;
+}
+
+void fgb_inc_de(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.de++;
+}
+
+void fgb_inc_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.hl++;
+}
+
+void fgb_inc_sp(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.sp++;
+}
+
+void fgb_inc_b(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.b = fgb_inc_u8(cpu, cpu->regs.b);
+}
+
+void fgb_inc_d(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.d = fgb_inc_u8(cpu, cpu->regs.d);
+}
+
+void fgb_inc_h(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.h = fgb_inc_u8(cpu, cpu->regs.h);
+}
+
+void fgb_inc_c(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.c = fgb_inc_u8(cpu, cpu->regs.c);
+}
+
+void fgb_inc_e(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.e = fgb_inc_u8(cpu, cpu->regs.e);
+}
+
+void fgb_inc_l(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.l = fgb_inc_u8(cpu, cpu->regs.l);
+}
+
+void fgb_inc_a(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_inc_u8(cpu, cpu->regs.a);
+}
+
+void fgb_inc_p_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
+    uint8_t value = fgb_mem_read(&cpu->memory, cpu->regs.hl);
+    value = fgb_inc_u8(cpu, value);
+    fgb_mem_write(&cpu->memory, cpu->regs.hl, value);
+}
+
+void fgb_dec_b(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.b = fgb_dec_u8(cpu, cpu->regs.b);
+}
+
+void fgb_dec_d(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.d = fgb_dec_u8(cpu, cpu->regs.d);
+}
+
+void fgb_dec_h(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.h = fgb_dec_u8(cpu, cpu->regs.h);
+}
+
+void fgb_dec_c(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.c = fgb_dec_u8(cpu, cpu->regs.c);
+}
+
+void fgb_dec_e(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.e = fgb_dec_u8(cpu, cpu->regs.e);
+}
+
+void fgb_dec_l(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.l = fgb_dec_u8(cpu, cpu->regs.l);
+}
+
+void fgb_dec_a(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_dec_u8(cpu, cpu->regs.a);
+}
+
+void fgb_dec_p_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
+    uint8_t value = fgb_mem_read(&cpu->memory, cpu->regs.hl);
+    value = fgb_dec_u8(cpu, value);
+    fgb_mem_write(&cpu->memory, cpu->regs.hl, value);
+}
