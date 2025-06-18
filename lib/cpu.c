@@ -181,6 +181,14 @@ static inline uint8_t fgb_dec_u8(fgb_cpu* cpu, uint8_t value) {
     return value;
 }
 
+static inline uint16_t fgb_add_u16(fgb_cpu* cpu, uint16_t a, uint16_t b) {
+    const uint32_t result = a + b;
+    cpu->regs.flags.c = result > 0xFFFF;
+    cpu->regs.flags.h = ((a & 0xFFF) + (b & 0xFFF)) > 0xFFF;
+    cpu->regs.flags.n = 0;
+    return result & 0xFFFF;
+}
+
 void fgb_nop(fgb_cpu* cpu, const fgb_instruction* ins) {
     // No operation, just a placeholder
     (void)cpu;
@@ -189,6 +197,7 @@ void fgb_nop(fgb_cpu* cpu, const fgb_instruction* ins) {
 
 void fgb_stop(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
     cpu->stopped = true;
+    cpu->halted = true;
 }
 
 void fgb_ld_bc_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
@@ -482,4 +491,20 @@ void fgb_jr_c(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
     if (cpu->regs.flags.c) {
         cpu->regs.pc += (int8_t)operand;
     }
+}
+
+void fgb_add_hl_bc(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.hl = fgb_add_u16(cpu, cpu->regs.hl, cpu->regs.bc);
+}
+
+void fgb_add_hl_de(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.hl = fgb_add_u16(cpu, cpu->regs.hl, cpu->regs.de);
+}
+
+void fgb_add_hl_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.hl = fgb_add_u16(cpu, cpu->regs.hl, cpu->regs.hl);
+}
+
+void fgb_add_hl_sp(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.hl = fgb_add_u16(cpu, cpu->regs.hl, cpu->regs.sp);
 }

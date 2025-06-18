@@ -116,5 +116,11 @@ void fgb_jr_z(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
 void fgb_jr_nc(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
 void fgb_jr_c(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
 
+// ADD HL, reg16
+void fgb_add_hl_bc(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_add_hl_de(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_add_hl_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_add_hl_sp(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
 
 #endif // FGB_INSTRUCTION_H
