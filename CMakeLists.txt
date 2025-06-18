@@ -6,6 +6,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 set(SOURCES
     "src/main.c"
-    "src/fgb/cpu.c")
+    "src/fgb/cpu.c" "src/fgb/memory.c")
 
 add_executable(${PROJECT_NAME} ${SOURCES})

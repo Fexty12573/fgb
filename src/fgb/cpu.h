@@ -1,10 +1,12 @@
 #ifndef FGB_CPU_H
 #define FGB_CPU_H
 
+#include "memory.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
-#define FGB_CPU_MEMORY_SIZE 0x10000 // 64KB memory size
+
 #define FGB_CPU_CLOCK_SPEED 4194304 // 4.194304 MHz
 #define FGB_SCREEN_WIDTH    160
 #define FGB_SCREEN_HEIGHT   144
@@ -57,8 +59,8 @@ typedef struct fgb_cpu_regs {
 
 typedef struct fgb_cpu {
     fgb_cpu_regs regs;
-
-    uint8_t memory[FGB_CPU_MEMORY_SIZE];
+    fgb_memory memory;
+    
     uint8_t screen[FGB_SCREEN_WIDTH * FGB_SCREEN_HEIGHT * 3]; // 3 bytes per pixel (RGB)
 
     bool halted;
