@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+
+static int fgb_cpu_execute(fgb_cpu* cpu);
+
 struct fgb_init_value {
     uint16_t addr;
     uint8_t value;
@@ -83,3 +86,14 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
     }
 }
 
+void fgb_cpu_step(fgb_cpu* cpu) {
+    int cycles = 0;
+
+    while (cycles < FGB_CYCLES_PER_FRAME) {
+        
+    }
+}
+
+int fgb_cpu_execute(fgb_cpu* cpu) {
+    return 0;
+}

@@ -7,9 +7,11 @@
 #include <stdint.h>
 
 
-#define FGB_CPU_CLOCK_SPEED 4194304 // 4.194304 MHz
-#define FGB_SCREEN_WIDTH    160
-#define FGB_SCREEN_HEIGHT   144
+#define FGB_CPU_CLOCK_SPEED     4194304 // 4.194304 MHz
+#define FGB_SCREEN_WIDTH        160
+#define FGB_SCREEN_HEIGHT       144
+#define FGB_SCREEN_REFRESH_RATE 60 // 60 Hz
+#define FGB_CYCLES_PER_FRAME    (FGB_CPU_CLOCK_SPEED / FGB_SCREEN_REFRESH_RATE)
 
 
 typedef struct fgb_cpu_regs {
@@ -72,5 +74,6 @@ fgb_cpu* fgb_cpu_create(void);
 void fgb_cpu_destroy(fgb_cpu* cpu);
 
 void fgb_cpu_reset(fgb_cpu* cpu);
+void fgb_cpu_step(fgb_cpu* cpu);
 
 #endif // FGB_CPU_H
