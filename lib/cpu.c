@@ -11,6 +11,9 @@
 static int fgb_cpu_execute(fgb_cpu* cpu);
 static uint8_t fgb_cpu_fetch(fgb_cpu* cpu);
 static uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu);
+#define fgb_mem_write(cpu, addr, value) (cpu)->memory.write_u8(&(cpu)->memory, addr, value)
+#define fgb_mem_read_u8(cpu, addr) (cpu)->memory.read_u8(&(cpu)->memory, addr)
+#define fgb_mem_read_u16(cpu, addr) (cpu)->memory.read_u16(&(cpu)->memory, addr)
 
 struct fgb_init_value {
     uint16_t addr;
@@ -89,7 +92,7 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
     cpu->regs.hl = 0x014D;
     
     for (size_t i = 0; i < sizeof(fgb_init_table) / sizeof(fgb_init_table[0]); i++) {
-        fgb_mem_write(&cpu->memory, fgb_init_table[i].addr, fgb_init_table[i].value);
+        cpu->memory.write_u8(&cpu->memory, fgb_init_table[i].addr, fgb_init_table[i].value);
     }
 }
 
@@ -129,11 +132,11 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
 }
 
 uint8_t fgb_cpu_fetch(fgb_cpu* cpu) {
-    return fgb_mem_read(&cpu->memory, cpu->regs.pc++);
+    return fgb_mem_read_u8(cpu, cpu->regs.pc++);
 }
 
 uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu) {
-    const uint16_t value = fgb_mem_read_u16(&cpu->memory, cpu->regs.pc);
+    const uint16_t value = fgb_mem_read_u16(cpu, cpu->regs.pc);
     cpu->regs.pc += 2;
     return value;
 }
@@ -183,19 +186,19 @@ void fgb_ld_sp_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
 }
 
 void fgb_ld_p_bc_a(fgb_cpu* cpu, const fgb_instruction* ins) {
-    fgb_mem_write(&cpu->memory, cpu->regs.bc, cpu->regs.a);
+    fgb_mem_write(cpu, cpu->regs.bc, cpu->regs.a);
 }
 
 void fgb_ld_p_de_a(fgb_cpu* cpu, const fgb_instruction* ins) {
-    fgb_mem_write(&cpu->memory, cpu->regs.de, cpu->regs.a);
+    fgb_mem_write(cpu, cpu->regs.de, cpu->regs.a);
 }
 
 void fgb_ld_p_hli_a(fgb_cpu* cpu, const fgb_instruction* ins) {
-    fgb_mem_write(&cpu->memory, cpu->regs.hl++, cpu->regs.a);
+    fgb_mem_write(cpu, cpu->regs.hl++, cpu->regs.a);
 }
 
 void fgb_ld_p_hld_a(fgb_cpu* cpu, const fgb_instruction* ins) {
-    fgb_mem_write(&cpu->memory, cpu->regs.hl--, cpu->regs.a);
+    fgb_mem_write(cpu, cpu->regs.hl--, cpu->regs.a);
 }
 
 void fgb_inc_bc(fgb_cpu* cpu, const fgb_instruction* ins) {
@@ -243,9 +246,9 @@ void fgb_inc_a(fgb_cpu* cpu, const fgb_instruction* ins) {
 }
 
 void fgb_inc_p_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
-    uint8_t value = fgb_mem_read(&cpu->memory, cpu->regs.hl);
+    uint8_t value = fgb_mem_read_u8(cpu, cpu->regs.hl);
     value = fgb_inc_u8(cpu, value);
-    fgb_mem_write(&cpu->memory, cpu->regs.hl, value);
+    fgb_mem_write(cpu, cpu->regs.hl, value);
 }
 
 void fgb_dec_b(fgb_cpu* cpu, const fgb_instruction* ins) {
@@ -277,7 +280,7 @@ void fgb_dec_a(fgb_cpu* cpu, const fgb_instruction* ins) {
 }
 
 void fgb_dec_p_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
-    uint8_t value = fgb_mem_read(&cpu->memory, cpu->regs.hl);
+    uint8_t value = fgb_mem_read_u8(cpu, cpu->regs.hl);
     value = fgb_dec_u8(cpu, value);
-    fgb_mem_write(&cpu->memory, cpu->regs.hl, value);
+    fgb_mem_write(cpu, cpu->regs.hl, value);
 }

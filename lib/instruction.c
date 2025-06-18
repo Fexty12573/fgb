@@ -3,7 +3,8 @@
 
 #include <ulog.h>
 
-#define INS(disasm, opcode, op_size, cycles, exec) { disasm, opcode, op_size, cycles, { (void*)(exec) } }
+// cycles are multiplied by 4 to convert CPU cycles to clock cycles
+#define INS(disasm, opcode, op_size, cycles, exec) { disasm, opcode, op_size, (cycles) * 4, { (void*)(exec) } }
 
 
 static void fgb_unimplemented_0(fgb_cpu* cpu, const fgb_instruction* ins) {
