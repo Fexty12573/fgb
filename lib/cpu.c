@@ -1300,3 +1300,11 @@ void fgb_ret_nc(fgb_cpu* cpu, const fgb_instruction* ins) {
         fgb_ret_(cpu);
     }
 }
+
+void fgb_ei(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->ime = true;
+}
+
+void fgb_di(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->ime = false;
+}

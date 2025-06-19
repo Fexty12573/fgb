@@ -337,4 +337,8 @@ void fgb_ret_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_ret_nz(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_ret_nc(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
+// EI/DI
+void fgb_ei(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_di(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
 #endif // FGB_INSTRUCTION_H
