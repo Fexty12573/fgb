@@ -202,5 +202,25 @@ void fgb_ld_p_hl_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_ld_p_hl_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_ld_p_hl_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
+// ADD A, reg8/(HL)
+void fgb_add_a_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_add_a_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_add_a_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_add_a_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_add_a_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_add_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_add_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_add_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// ADC A, reg8/(HL)
+void fgb_adc_a_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_adc_a_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_adc_a_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_adc_a_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_adc_a_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_adc_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_adc_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_adc_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
 
 #endif // FGB_INSTRUCTION_H
