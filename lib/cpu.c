@@ -253,6 +253,12 @@ static inline uint8_t fgb_or_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
     return a;
 }
 
+static inline void fgb_call(fgb_cpu* cpu, uint16_t dest) {
+    fgb_mmu_write(cpu, --cpu->regs.sp, (cpu->regs.pc >> 8) & 0xFF);
+    fgb_mmu_write(cpu, --cpu->regs.sp, (cpu->regs.pc >> 0) & 0xFF);
+    cpu->regs.pc = dest;
+}
+
 void fgb_nop(fgb_cpu* cpu, const fgb_instruction* ins) {
     (void)cpu;
     (void)ins;
@@ -1232,4 +1238,32 @@ void fgb_jp_nc_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand)
 
 void fgb_jp_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.pc = cpu->regs.hl;
+}
+
+void fgb_call_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    fgb_call(cpu, operand);
+}
+
+void fgb_call_z_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    if (cpu->regs.flags.z) {
+        fgb_call(cpu, operand);
+    }
+}
+
+void fgb_call_c_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    if (cpu->regs.flags.c) {
+        fgb_call(cpu, operand);
+    }
+}
+
+void fgb_call_nz_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    if (!cpu->regs.flags.z) {
+        fgb_call(cpu, operand);
+    }
+}
+
+void fgb_call_nc_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    if (!cpu->regs.flags.c) {
+        fgb_call(cpu, operand);
+    }
 }

@@ -323,4 +323,11 @@ void fgb_jp_nz_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t o
 void fgb_jp_nc_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
 void fgb_jp_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
+// CALL [cond], imm16
+void fgb_call_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_call_z_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_call_c_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_call_nz_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_call_nc_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+
 #endif // FGB_INSTRUCTION_H
