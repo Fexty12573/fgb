@@ -1083,3 +1083,35 @@ void fgb_cp_a_a(fgb_cpu* cpu, const fgb_instruction* ins) {
 void fgb_cp_a_p_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
     (void)fgb_sub_u8(cpu, cpu->regs.a, fgb_mmu_read_u8(cpu, cpu->regs.hl));
 }
+
+void fgb_add_a_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    cpu->regs.a = fgb_add_u8(cpu, cpu->regs.a, operand);
+}
+
+void fgb_adc_a_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    cpu->regs.a = fgb_adc_u8(cpu, cpu->regs.a, operand);
+}
+
+void fgb_sub_a_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    cpu->regs.a = fgb_sub_u8(cpu, cpu->regs.a, operand);
+}
+
+void fgb_sbc_a_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    cpu->regs.a = fgb_sbc_u8(cpu, cpu->regs.a, operand);
+}
+
+void fgb_and_a_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    cpu->regs.a = fgb_and_u8(cpu, cpu->regs.a, operand);
+}
+
+void fgb_xor_a_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    cpu->regs.a = fgb_xor_u8(cpu, cpu->regs.a, operand);
+}
+
+void fgb_or_a_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    cpu->regs.a = fgb_or_u8(cpu, cpu->regs.a, operand);
+}
+
+void fgb_cp_a_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    (void)fgb_sub_u8(cpu, cpu->regs.a, operand);
+}

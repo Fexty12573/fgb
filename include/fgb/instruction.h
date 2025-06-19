@@ -282,5 +282,15 @@ void fgb_cp_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_cp_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_cp_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
+// OP a, imm
+void fgb_add_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_adc_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_sub_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_sbc_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_and_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_xor_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_or_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_cp_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+
 
 #endif // FGB_INSTRUCTION_H
