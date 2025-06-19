@@ -359,6 +359,5 @@ void fgb_rst_7(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
 // CB Prefix
 void fgb_cb(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t opcode);
-void fgb_cb_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t opcode);
 
 #endif // FGB_INSTRUCTION_H

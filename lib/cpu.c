@@ -1559,8 +1559,8 @@ void fgb_cb(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t opcode) {
     fgb_cb_cases(0xC5): cpu->regs.l = fgb_cb_set(cpu->regs.l, fgb_cb_bit_index(opcode)); break;
     fgb_cb_cases(0xC6): fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_set(fgb_mmu_read_u8(cpu, cpu->regs.hl), fgb_cb_bit_index(opcode))); break;
     fgb_cb_cases(0xC7): cpu->regs.a = fgb_cb_set(cpu->regs.a, fgb_cb_bit_index(opcode)); break;
-    }
-}
 
-void fgb_cb_p_hl(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t opcode) {
+        // Shouldn't ever happen but whatever
+    default: log_warn("Unknown instruction: CB %02X", opcode); break;
+    }
 }
