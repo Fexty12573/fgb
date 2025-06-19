@@ -1308,3 +1308,40 @@ void fgb_ei(fgb_cpu* cpu, const fgb_instruction* ins) {
 void fgb_di(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->ime = false;
 }
+
+void fgb_reti(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_ret_(cpu);
+    cpu->ime = true;
+}
+
+void fgb_rst_0(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_call(cpu, 0x0000);
+}
+
+void fgb_rst_1(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_call(cpu, 0x0008);
+}
+
+void fgb_rst_2(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_call(cpu, 0x0010);
+}
+
+void fgb_rst_3(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_call(cpu, 0x0018);
+}
+
+void fgb_rst_4(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_call(cpu, 0x0020);
+}
+
+void fgb_rst_5(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_call(cpu, 0x0028);
+}
+
+void fgb_rst_6(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_call(cpu, 0x0030);
+}
+
+void fgb_rst_7(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_call(cpu, 0x0038);
+}

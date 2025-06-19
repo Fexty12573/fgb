@@ -340,5 +340,16 @@ void fgb_ret_nc(struct fgb_cpu* cpu, const fgb_instruction* ins);
 // EI/DI
 void fgb_ei(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_di(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_reti(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// RST n
+void fgb_rst_0(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_rst_1(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_rst_2(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_rst_3(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_rst_4(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_rst_5(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_rst_6(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_rst_7(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
 #endif // FGB_INSTRUCTION_H
