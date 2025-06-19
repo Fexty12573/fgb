@@ -127,13 +127,16 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
     const fgb_instruction* instruction = fgb_instruction_get(opcode);
     assert(instruction->opcode == opcode);
 
+    uint8_t op1 = 0;
+
     switch (instruction->operand_size) {
     case 0:
         instruction->exec_0(cpu, instruction);
         break;
 
     case 1:
-        instruction->exec_1(cpu, instruction, fgb_cpu_fetch(cpu));
+        op1 = fgb_cpu_fetch(cpu);
+        instruction->exec_1(cpu, instruction, op1);
         break;
 
     case 2:
@@ -146,7 +149,7 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
         return FGB_CYCLES_PER_FRAME;
     }
 
-    return instruction->cycles;
+    return instruction->cycles != 255 ? instruction->cycles : fgb_instruction_get_cb_cycles(op1);
 }
 
 uint8_t fgb_cpu_fetch(fgb_cpu* cpu) {
@@ -1344,4 +1347,220 @@ void fgb_rst_6(fgb_cpu* cpu, const fgb_instruction* ins) {
 
 void fgb_rst_7(fgb_cpu* cpu, const fgb_instruction* ins) {
     fgb_call(cpu, 0x0038);
+}
+
+#define fgb_cb_bit_index(opcode) (((opcode) >> 3) & 7)
+
+static inline uint8_t fgb_cb_rlc(fgb_cpu* cpu, uint8_t value) {
+    cpu->regs.flags.c = value >> 7;
+    value <<= 1;
+    value |= cpu->regs.flags.c;
+    cpu->regs.flags.z = value == 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
+    return value;
+}
+
+static inline uint8_t fgb_cb_rrc(fgb_cpu* cpu, uint8_t value) {
+    cpu->regs.flags.c = value & 1;
+    value >>= 1;
+    value |= cpu->regs.flags.c << 7;
+    cpu->regs.flags.z = value == 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
+    return value;
+}
+
+static inline uint8_t fgb_cb_rl(fgb_cpu* cpu, uint8_t value) {
+    const uint8_t c = cpu->regs.flags.c;
+    cpu->regs.flags.c = value >> 7;
+    value <<= 1;
+    value |= c;
+    cpu->regs.flags.z = value == 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
+    return value;
+}
+
+static inline uint8_t fgb_cb_rr(fgb_cpu* cpu, uint8_t value) {
+    const uint8_t c = cpu->regs.flags.c;
+    cpu->regs.flags.c = value & 1;
+    value >>= 1;
+    value |= c << 7;
+    cpu->regs.flags.z = value == 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
+    return value;
+}
+
+static inline uint8_t fgb_cb_sla(fgb_cpu* cpu, uint8_t value) {
+    cpu->regs.flags.c = value >> 7;
+    value <<= 1;
+    cpu->regs.flags.z = value == 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
+    return value;
+}
+
+static inline uint8_t fgb_cb_sra(fgb_cpu* cpu, uint8_t value) {
+    cpu->regs.flags.c = value & 1;
+    value = (int8_t)value >> 1;
+    cpu->regs.flags.z = value == 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
+    return value;
+}
+
+static inline uint8_t fgb_cb_swap(fgb_cpu* cpu, uint8_t value) {
+    value = (value & 0x0F) << 4 | (value & 0xF0) >> 4;
+    cpu->regs.flags.z = value == 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
+    cpu->regs.flags.c = 0;
+    return value;
+}
+
+static inline uint8_t fgb_cb_srl(fgb_cpu* cpu, uint8_t value) {
+    cpu->regs.flags.c = value & 1;
+    value >>= 1;
+    cpu->regs.flags.z = value == 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 0;
+    return value;
+}
+
+static inline void fgb_cb_bit(fgb_cpu* cpu, uint8_t bit, uint8_t value) {
+    cpu->regs.flags.z = ((value >> bit) & 1) == 0;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.h = 1;
+}
+
+#define fgb_cb_res(val, bit) ((val) & ~(1 << (bit)))
+#define fgb_cb_set(val, bit) ((val) | (1 << (bit)))
+
+#define fgb_cb_cases(start) \
+    case start + 0x00: \
+    case start + 0x08: \
+    case start + 0x10: \
+    case start + 0x18: \
+    case start + 0x20: \
+    case start + 0x28: \
+    case start + 0x30: \
+    case start + 0x38
+
+void fgb_cb(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t opcode) {
+    switch (opcode) {
+        // RLC reg8
+    case 0x00: cpu->regs.b = fgb_cb_rlc(cpu, cpu->regs.b); break;
+    case 0x01: cpu->regs.c = fgb_cb_rlc(cpu, cpu->regs.c); break;
+    case 0x02: cpu->regs.d = fgb_cb_rlc(cpu, cpu->regs.d); break;
+    case 0x03: cpu->regs.e = fgb_cb_rlc(cpu, cpu->regs.e); break;
+    case 0x04: cpu->regs.h = fgb_cb_rlc(cpu, cpu->regs.h); break;
+    case 0x05: cpu->regs.l = fgb_cb_rlc(cpu, cpu->regs.l); break;
+    case 0x06: fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_rlc(cpu, fgb_mmu_read_u8(cpu, cpu->regs.hl))); break;
+    case 0x07: cpu->regs.a = fgb_cb_rlc(cpu, cpu->regs.a); break;
+
+        // RRC reg8
+    case 0x08: cpu->regs.b = fgb_cb_rrc(cpu, cpu->regs.b); break;
+    case 0x09: cpu->regs.c = fgb_cb_rrc(cpu, cpu->regs.c); break;
+    case 0x0A: cpu->regs.d = fgb_cb_rrc(cpu, cpu->regs.d); break;
+    case 0x0B: cpu->regs.e = fgb_cb_rrc(cpu, cpu->regs.e); break;
+    case 0x0C: cpu->regs.h = fgb_cb_rrc(cpu, cpu->regs.h); break;
+    case 0x0D: cpu->regs.l = fgb_cb_rrc(cpu, cpu->regs.l); break;
+    case 0x0E: fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_rrc(cpu, fgb_mmu_read_u8(cpu, cpu->regs.hl))); break;
+    case 0x0F: cpu->regs.a = fgb_cb_rrc(cpu, cpu->regs.a); break;
+
+        // RL reg8
+    case 0x10: cpu->regs.b = fgb_cb_rl(cpu, cpu->regs.b); break;
+    case 0x11: cpu->regs.c = fgb_cb_rl(cpu, cpu->regs.c); break;
+    case 0x12: cpu->regs.d = fgb_cb_rl(cpu, cpu->regs.d); break;
+    case 0x13: cpu->regs.e = fgb_cb_rl(cpu, cpu->regs.e); break;
+    case 0x14: cpu->regs.h = fgb_cb_rl(cpu, cpu->regs.h); break;
+    case 0x15: cpu->regs.l = fgb_cb_rl(cpu, cpu->regs.l); break;
+    case 0x16: fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_rl(cpu, fgb_mmu_read_u8(cpu, cpu->regs.hl))); break;
+    case 0x17: cpu->regs.a = fgb_cb_rl(cpu, cpu->regs.a); break;
+
+        // RR reg8
+    case 0x18: cpu->regs.b = fgb_cb_rr(cpu, cpu->regs.b); break;
+    case 0x19: cpu->regs.c = fgb_cb_rr(cpu, cpu->regs.c); break;
+    case 0x1A: cpu->regs.d = fgb_cb_rr(cpu, cpu->regs.d); break;
+    case 0x1B: cpu->regs.e = fgb_cb_rr(cpu, cpu->regs.e); break;
+    case 0x1C: cpu->regs.h = fgb_cb_rr(cpu, cpu->regs.h); break;
+    case 0x1D: cpu->regs.l = fgb_cb_rr(cpu, cpu->regs.l); break;
+    case 0x1E: fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_rr(cpu, fgb_mmu_read_u8(cpu, cpu->regs.hl))); break;
+    case 0x1F: cpu->regs.a = fgb_cb_rr(cpu, cpu->regs.a); break;
+
+        // SLA reg8
+    case 0x20: cpu->regs.b = fgb_cb_sla(cpu, cpu->regs.b); break;
+    case 0x21: cpu->regs.c = fgb_cb_sla(cpu, cpu->regs.c); break;
+    case 0x22: cpu->regs.d = fgb_cb_sla(cpu, cpu->regs.d); break;
+    case 0x23: cpu->regs.e = fgb_cb_sla(cpu, cpu->regs.e); break;
+    case 0x24: cpu->regs.h = fgb_cb_sla(cpu, cpu->regs.h); break;
+    case 0x25: cpu->regs.l = fgb_cb_sla(cpu, cpu->regs.l); break;
+    case 0x26: fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_sla(cpu, fgb_mmu_read_u8(cpu, cpu->regs.hl))); break;
+    case 0x27: cpu->regs.a = fgb_cb_sla(cpu, cpu->regs.a); break;
+
+        // SRA reg8
+    case 0x28: cpu->regs.b = fgb_cb_sra(cpu, cpu->regs.b); break;
+    case 0x29: cpu->regs.c = fgb_cb_sra(cpu, cpu->regs.c); break;
+    case 0x2A: cpu->regs.d = fgb_cb_sra(cpu, cpu->regs.d); break;
+    case 0x2B: cpu->regs.e = fgb_cb_sra(cpu, cpu->regs.e); break;
+    case 0x2C: cpu->regs.h = fgb_cb_sra(cpu, cpu->regs.h); break;
+    case 0x2D: cpu->regs.l = fgb_cb_sra(cpu, cpu->regs.l); break;
+    case 0x2E: fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_sra(cpu, fgb_mmu_read_u8(cpu, cpu->regs.hl))); break;
+    case 0x2F: cpu->regs.a = fgb_cb_sra(cpu, cpu->regs.a); break;
+
+        // SWAP reg8
+    case 0x30: cpu->regs.b = fgb_cb_swap(cpu, cpu->regs.b); break;
+    case 0x31: cpu->regs.c = fgb_cb_swap(cpu, cpu->regs.c); break;
+    case 0x32: cpu->regs.d = fgb_cb_swap(cpu, cpu->regs.d); break;
+    case 0x33: cpu->regs.e = fgb_cb_swap(cpu, cpu->regs.e); break;
+    case 0x34: cpu->regs.h = fgb_cb_swap(cpu, cpu->regs.h); break;
+    case 0x35: cpu->regs.l = fgb_cb_swap(cpu, cpu->regs.l); break;
+    case 0x36: fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_swap(cpu, fgb_mmu_read_u8(cpu, cpu->regs.hl))); break;
+    case 0x37: cpu->regs.a = fgb_cb_swap(cpu, cpu->regs.a); break;
+
+        // SRL reg8
+    case 0x38: cpu->regs.b = fgb_cb_srl(cpu, cpu->regs.b); break;
+    case 0x39: cpu->regs.c = fgb_cb_srl(cpu, cpu->regs.c); break;
+    case 0x3A: cpu->regs.d = fgb_cb_srl(cpu, cpu->regs.d); break;
+    case 0x3B: cpu->regs.e = fgb_cb_srl(cpu, cpu->regs.e); break;
+    case 0x3C: cpu->regs.h = fgb_cb_srl(cpu, cpu->regs.h); break;
+    case 0x3D: cpu->regs.l = fgb_cb_srl(cpu, cpu->regs.l); break;
+    case 0x3E: fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_srl(cpu, fgb_mmu_read_u8(cpu, cpu->regs.hl))); break;
+    case 0x3F: cpu->regs.a = fgb_cb_srl(cpu, cpu->regs.a); break;
+
+        // BIT n, reg8
+    fgb_cb_cases(0x40): fgb_cb_bit(cpu, fgb_cb_bit_index(opcode), cpu->regs.b); break;
+    fgb_cb_cases(0x41): fgb_cb_bit(cpu, fgb_cb_bit_index(opcode), cpu->regs.c); break;
+    fgb_cb_cases(0x42): fgb_cb_bit(cpu, fgb_cb_bit_index(opcode), cpu->regs.d); break;
+    fgb_cb_cases(0x43): fgb_cb_bit(cpu, fgb_cb_bit_index(opcode), cpu->regs.e); break;
+    fgb_cb_cases(0x44): fgb_cb_bit(cpu, fgb_cb_bit_index(opcode), cpu->regs.h); break;
+    fgb_cb_cases(0x45): fgb_cb_bit(cpu, fgb_cb_bit_index(opcode), cpu->regs.l); break;
+    fgb_cb_cases(0x46): fgb_cb_bit(cpu, fgb_cb_bit_index(opcode), fgb_mmu_read_u8(cpu, cpu->regs.hl)); break;
+    fgb_cb_cases(0x47): fgb_cb_bit(cpu, fgb_cb_bit_index(opcode), cpu->regs.a); break;
+
+        // RES n, reg8
+    fgb_cb_cases(0x80): cpu->regs.b = fgb_cb_res(cpu->regs.b, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0x81): cpu->regs.c = fgb_cb_res(cpu->regs.c, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0x82): cpu->regs.d = fgb_cb_res(cpu->regs.d, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0x83): cpu->regs.e = fgb_cb_res(cpu->regs.e, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0x84): cpu->regs.h = fgb_cb_res(cpu->regs.h, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0x85): cpu->regs.l = fgb_cb_res(cpu->regs.l, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0x86): fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_res(fgb_mmu_read_u8(cpu, cpu->regs.hl), fgb_cb_bit_index(opcode))); break;
+    fgb_cb_cases(0x87): cpu->regs.a = fgb_cb_res(cpu->regs.a, fgb_cb_bit_index(opcode)); break;
+
+        // SET n, reg8
+    fgb_cb_cases(0xC0): cpu->regs.b = fgb_cb_set(cpu->regs.b, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0xC1): cpu->regs.c = fgb_cb_set(cpu->regs.c, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0xC2): cpu->regs.d = fgb_cb_set(cpu->regs.d, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0xC3): cpu->regs.e = fgb_cb_set(cpu->regs.e, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0xC4): cpu->regs.h = fgb_cb_set(cpu->regs.h, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0xC5): cpu->regs.l = fgb_cb_set(cpu->regs.l, fgb_cb_bit_index(opcode)); break;
+    fgb_cb_cases(0xC6): fgb_mmu_write(cpu, cpu->regs.hl, fgb_cb_set(fgb_mmu_read_u8(cpu, cpu->regs.hl), fgb_cb_bit_index(opcode))); break;
+    fgb_cb_cases(0xC7): cpu->regs.a = fgb_cb_set(cpu->regs.a, fgb_cb_bit_index(opcode)); break;
+    }
+}
+
+void fgb_cb_p_hl(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t opcode) {
 }

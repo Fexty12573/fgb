@@ -27,9 +27,14 @@ typedef struct fgb_instruction {
 } fgb_instruction;
 
 extern fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT];
+extern uint8_t fgb_cb_instruction_cycles[FGB_INSTRUCTION_COUNT];
 
 static inline fgb_instruction* fgb_instruction_get(uint8_t opcode) {
     return fgb_instruction_table + opcode;
+}
+
+static inline uint8_t fgb_instruction_get_cb_cycles(uint8_t opcode) {
+    return fgb_cb_instruction_cycles[opcode];
 }
 
 // x0
@@ -351,5 +356,9 @@ void fgb_rst_4(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_rst_5(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_rst_6(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_rst_7(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// CB Prefix
+void fgb_cb(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t opcode);
+void fgb_cb_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t opcode);
 
 #endif // FGB_INSTRUCTION_H

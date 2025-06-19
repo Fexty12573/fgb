@@ -243,7 +243,7 @@ fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT] = {
     INS("RET Z", 0xC8, 0, 2, fgb_ret_z),
     INS("RET", 0xC9, 0, 4, fgb_ret),
     INS("JP Z,0x%04X", 0xCA, 2, 3, fgb_jp_z_imm16),
-    INS(NULL, 0xCB, 0, 0, fgb_unimplemented_0), // CB prefix
+    INS("CB-", 0xCB, 1, 255, fgb_cb),
     INS("CALL Z,0x%04X", 0xCC, 2, 3, fgb_call_z_imm16),
     INS("CALL 0x%04X", 0xCD, 2, 6, fgb_call_imm16),
     INS("ADC A,0x%02X", 0xCE, 1, 2, fgb_adc_a_imm),
@@ -252,7 +252,7 @@ fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT] = {
     INS("RET NC", 0xD0, 0, 2, fgb_ret_nc),
     INS("POP DE", 0xD1, 0, 3, fgb_pop_de),
     INS("JP NC,0x%04X", 0xD2, 2, 3, fgb_jp_nc_imm16),
-    INS(NULL, 0xD3, 0, 0, fgb_unimplemented_0),
+    INS(NULL, 0xD3, 1, 255, fgb_unimplemented_0),
     INS("CALL NC,0x%04X", 0xD4, 2, 3, fgb_call_nc_imm16),
     INS("PUSH DE", 0xD5, 0, 4, fgb_push_de),
     INS("SUB 0x%02X", 0xD6, 1, 2, fgb_sub_a_imm),
@@ -299,4 +299,24 @@ fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT] = {
     INS(NULL, 0xFD, 0, 0, fgb_unimplemented_0),
     INS("CP 0x%02X", 0xFE, 1, 2, fgb_cp_a_imm),
     INS("RST 7", 0xFF, 0, 4, fgb_rst_7),
+};
+
+
+uint8_t fgb_cb_instruction_cycles[FGB_INSTRUCTION_COUNT] = {
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2,
+    2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2,
+    2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2,
+    2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 3, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
+    2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
 };
