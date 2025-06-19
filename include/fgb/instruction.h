@@ -292,5 +292,15 @@ void fgb_xor_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t oper
 void fgb_or_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
 void fgb_cp_a_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
 
+// PUSH/POP reg16
+void fgb_push_bc(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_push_de(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_push_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_push_af(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_pop_bc(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_pop_de(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_pop_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_pop_af(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
 
 #endif // FGB_INSTRUCTION_H
