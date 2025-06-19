@@ -11,10 +11,10 @@ static void mock_cpu_init(size_t tester_ins_mem_size, uint8_t* tester_ins_mem);
 static void mock_cpu_set_state(struct state* state);
 static void mock_cpu_get_state(struct state* state);
 static int mock_cpu_step(void);
-static uint8_t mock_mmu_read(const fgb_memory* memory, uint16_t addr);
-static void mock_mmu_write(fgb_memory* memory, uint16_t addr, uint8_t value);
-static uint16_t mock_mmu_read16(const fgb_memory* memory, uint16_t addr);
-static void mock_mmu_reset(fgb_memory* memory);
+static uint8_t mock_mmu_read(const fgb_mmu* mmu, uint16_t addr);
+static void mock_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value);
+static uint16_t mock_mmu_read16(const fgb_mmu* mmu, uint16_t addr);
+static void mock_mmu_reset(fgb_mmu* mmu);
 
 struct tester_operations mock_cpu_ops = {
     .init = mock_cpu_init,
@@ -24,7 +24,7 @@ struct tester_operations mock_cpu_ops = {
 };
 
 static void mock_cpu_init(size_t tester_ins_mem_size, uint8_t* tester_ins_mem) {
-    const fgb_mem_ops ops = {
+    const fgb_mmu_ops ops = {
         .reset = mock_mmu_reset,
         .write_u8 = mock_mmu_write,
         .read_u8 = mock_mmu_read,
@@ -78,28 +78,28 @@ int mock_cpu_step(void) {
     return fgb_cpu_execute(cpu);
 }
 
-uint8_t mock_mmu_read(const fgb_memory* memory, uint16_t addr) {
-    if (addr < memory->ext_data_size) {
-        return memory->ext_data[addr];
+uint8_t mock_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
+    if (addr < mmu->ext_data_size) {
+        return mmu->ext_data[addr];
     }
 
     return 0xAA;
 }
 
-void mock_mmu_write(fgb_memory* memory, uint16_t addr, uint8_t value) {
-    (void)memory;
+void mock_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
+    (void)mmu;
     struct mem_access* access = &mem_accesses[mem_access_count++];
     access->type = MEM_ACCESS_WRITE;
     access->addr = addr;
     access->val = value;
 }
 
-uint16_t mock_mmu_read16(const fgb_memory* memory, uint16_t addr) {
-    const uint16_t lower = mock_mmu_read(memory, addr);
-    const uint16_t upper = mock_mmu_read(memory, addr + 1);
+uint16_t mock_mmu_read16(const fgb_mmu* mmu, uint16_t addr) {
+    const uint16_t lower = mock_mmu_read(mmu, addr);
+    const uint16_t upper = mock_mmu_read(mmu, addr + 1);
     return (upper << 8) | lower;
 }
 
-void mock_mmu_reset(fgb_memory* memory) {
-    (void)memory; // Don't do anything
+void mock_mmu_reset(fgb_mmu* mmu) {
+    (void)mmu; // Don't do anything
 }

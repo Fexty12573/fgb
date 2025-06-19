@@ -1,7 +1,7 @@
 #ifndef FGB_CPU_H
 #define FGB_CPU_H
 
-#include "memory.h"
+#include "mmu.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -61,7 +61,7 @@ typedef struct fgb_cpu_regs {
 
 typedef struct fgb_cpu {
     fgb_cpu_regs regs;
-    fgb_memory memory;
+    fgb_mmu mmu;
     
     uint8_t screen[FGB_SCREEN_WIDTH * FGB_SCREEN_HEIGHT * 3]; // 3 bytes per pixel (RGB)
 
@@ -72,7 +72,7 @@ typedef struct fgb_cpu {
 
 
 fgb_cpu* fgb_cpu_create(void);
-fgb_cpu* fgb_cpu_create_with(const fgb_mem_ops* mem_ops);
+fgb_cpu* fgb_cpu_create_with(const fgb_mmu_ops* mmu_ops);
 void fgb_cpu_destroy(fgb_cpu* cpu);
 
 void fgb_cpu_reset(fgb_cpu* cpu);

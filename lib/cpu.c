@@ -10,9 +10,9 @@
 
 static uint8_t fgb_cpu_fetch(fgb_cpu* cpu);
 static uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu);
-#define fgb_mem_write(cpu, addr, value) (cpu)->memory.write_u8(&(cpu)->memory, addr, value)
-#define fgb_mem_read_u8(cpu, addr) (cpu)->memory.read_u8(&(cpu)->memory, addr)
-#define fgb_mem_read_u16(cpu, addr) (cpu)->memory.read_u16(&(cpu)->memory, addr)
+#define fgb_mem_write(cpu, addr, value) (cpu)->mmu.write_u8(&(cpu)->mmu, addr, value)
+#define fgb_mem_read_u8(cpu, addr) (cpu)->mmu.read_u8(&(cpu)->mmu, addr)
+#define fgb_mem_read_u16(cpu, addr) (cpu)->mmu.read_u16(&(cpu)->mmu, addr)
 
 struct fgb_init_value {
     uint16_t addr;
@@ -72,13 +72,13 @@ fgb_cpu* fgb_cpu_create(void) {
 
     memset(cpu, 0, sizeof(fgb_cpu));
 
-    fgb_mem_init(&cpu->memory, NULL);
+    fgb_mmu_init(&cpu->mmu, NULL);
     fgb_cpu_reset(cpu);
 
     return cpu;
 }
 
-fgb_cpu* fgb_cpu_create_with(const fgb_mem_ops* mem_ops) {
+fgb_cpu* fgb_cpu_create_with(const fgb_mmu_ops* mmu_ops) {
     fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
     if (!cpu) {
         return NULL;
@@ -86,7 +86,7 @@ fgb_cpu* fgb_cpu_create_with(const fgb_mem_ops* mem_ops) {
 
     memset(cpu, 0, sizeof(fgb_cpu));
 
-    fgb_mem_init(&cpu->memory, mem_ops);
+    fgb_mmu_init(&cpu->mmu, mmu_ops);
     fgb_cpu_reset(cpu);
 
     return cpu;
@@ -110,7 +110,7 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
     cpu->regs.hl = 0x014D;
     
     for (size_t i = 0; i < sizeof(fgb_init_table) / sizeof(fgb_init_table[0]); i++) {
-        cpu->memory.write_u8(&cpu->memory, fgb_init_table[i].addr, fgb_init_table[i].value);
+        cpu->mmu.write_u8(&cpu->mmu, fgb_init_table[i].addr, fgb_init_table[i].value);
     }
 }
 
