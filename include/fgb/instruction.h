@@ -242,5 +242,35 @@ void fgb_sbc_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_sbc_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_sbc_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
+// AND A, reg8/(HL)
+void fgb_and_a_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_and_a_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_and_a_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_and_a_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_and_a_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_and_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_and_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_and_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// XOR A, reg8/(HL)
+void fgb_xor_a_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_xor_a_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_xor_a_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_xor_a_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_xor_a_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_xor_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_xor_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_xor_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// OR A, reg8/(HL)
+void fgb_or_a_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_or_a_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_or_a_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_or_a_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_or_a_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_or_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_or_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_or_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
 
 #endif // FGB_INSTRUCTION_H
