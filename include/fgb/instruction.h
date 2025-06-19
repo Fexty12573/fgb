@@ -315,5 +315,12 @@ void fgb_ld_a_p_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t 
 void fgb_ld_hl_sp_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
 void fgb_ld_sp_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
+// JP [cond], imm16/HL
+void fgb_jp_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_jp_z_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_jp_c_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_jp_nz_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_jp_nc_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_jp_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
 #endif // FGB_INSTRUCTION_H

@@ -1201,3 +1201,35 @@ void fgb_ld_hl_sp_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand)
 void fgb_ld_sp_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.sp = cpu->regs.hl;
 }
+
+void fgb_jp_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    cpu->regs.pc = operand;
+}
+
+void fgb_jp_z_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    if (cpu->regs.flags.z) {
+        cpu->regs.pc = operand;
+    }
+}
+
+void fgb_jp_c_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    if (cpu->regs.flags.c) {
+        cpu->regs.pc = operand;
+    }
+}
+
+void fgb_jp_nz_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    if (!cpu->regs.flags.z) {
+        cpu->regs.pc = operand;
+    }
+}
+
+void fgb_jp_nc_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    if (!cpu->regs.flags.c) {
+        cpu->regs.pc = operand;
+    }
+}
+
+void fgb_jp_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.pc = cpu->regs.hl;
+}
