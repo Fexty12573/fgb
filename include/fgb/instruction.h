@@ -330,4 +330,11 @@ void fgb_call_c_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t 
 void fgb_call_nz_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
 void fgb_call_nc_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
 
+// RET [cond]
+void fgb_ret(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ret_z(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ret_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ret_nz(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ret_nc(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
 #endif // FGB_INSTRUCTION_H

@@ -232,7 +232,7 @@ fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT] = {
     INS("CP (HL)", 0xBE, 0, 2, fgb_cp_a_p_hl),
     INS("CP A", 0xBF, 0, 1, fgb_cp_a_a),
 
-    INS("RET NZ", 0xC0, 0, 2, fgb_unimplemented_0),
+    INS("RET NZ", 0xC0, 0, 2, fgb_ret_nz),
     INS("POP BC", 0xC1, 0, 3, fgb_pop_bc),
     INS("JP NZ,0x%04X", 0xC2, 2, 3, fgb_jp_nz_imm16),
     INS("JP 0x%04X", 0xC3, 2, 4, fgb_jp_imm16),
@@ -240,8 +240,8 @@ fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT] = {
     INS("PUSH BC", 0xC5, 0, 4, fgb_push_bc),
     INS("ADD A,0x%02X", 0xC6, 1, 2, fgb_add_a_imm),
     INS("RST 0", 0xC7, 0, 4, fgb_unimplemented_0),
-    INS("RET Z", 0xC8, 0, 2, fgb_unimplemented_0),
-    INS("RET", 0xC9, 0, 4, fgb_unimplemented_0),
+    INS("RET Z", 0xC8, 0, 2, fgb_ret_z),
+    INS("RET", 0xC9, 0, 4, fgb_ret),
     INS("JP Z,0x%04X", 0xCA, 2, 3, fgb_jp_z_imm16),
     INS(NULL, 0xCB, 0, 0, fgb_unimplemented_0), // CB prefix
     INS("CALL Z,0x%04X", 0xCC, 2, 3, fgb_call_z_imm16),
@@ -249,7 +249,7 @@ fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT] = {
     INS("ADC A,0x%02X", 0xCE, 1, 2, fgb_adc_a_imm),
     INS("RST 1", 0xCF, 0, 4, fgb_unimplemented_0),
 
-    INS("RET NC", 0xD0, 0, 2, fgb_unimplemented_0),
+    INS("RET NC", 0xD0, 0, 2, fgb_ret_nc),
     INS("POP DE", 0xD1, 0, 3, fgb_pop_de),
     INS("JP NC,0x%04X", 0xD2, 2, 3, fgb_jp_nc_imm16),
     INS(NULL, 0xD3, 0, 0, fgb_unimplemented_0),
@@ -257,7 +257,7 @@ fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT] = {
     INS("PUSH DE", 0xD5, 0, 4, fgb_push_de),
     INS("SUB 0x%02X", 0xD6, 1, 2, fgb_sub_a_imm),
     INS("RST 2", 0xD7, 0, 4, fgb_unimplemented_0),
-    INS("RET C", 0xD8, 0, 2, fgb_unimplemented_0),
+    INS("RET C", 0xD8, 0, 2, fgb_ret_c),
     INS("RETI", 0xD9, 0, 4, fgb_unimplemented_0),
     INS("JP C,0x%04X", 0xDA, 2, 3, fgb_jp_c_imm16),
     INS(NULL, 0xDB, 0, 0, fgb_unimplemented_0),

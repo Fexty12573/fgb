@@ -259,6 +259,11 @@ static inline void fgb_call(fgb_cpu* cpu, uint16_t dest) {
     cpu->regs.pc = dest;
 }
 
+static inline void fgb_ret_(fgb_cpu* cpu) {
+    cpu->regs.pc = fgb_mmu_read_u16(cpu, cpu->regs.sp);
+    cpu->regs.sp += 2;
+}
+
 void fgb_nop(fgb_cpu* cpu, const fgb_instruction* ins) {
     (void)cpu;
     (void)ins;
@@ -1265,5 +1270,33 @@ void fgb_call_nz_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operan
 void fgb_call_nc_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
     if (!cpu->regs.flags.c) {
         fgb_call(cpu, operand);
+    }
+}
+
+void fgb_ret(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_ret_(cpu);
+}
+
+void fgb_ret_z(fgb_cpu* cpu, const fgb_instruction* ins) {
+    if (cpu->regs.flags.z) {
+        fgb_ret_(cpu);
+    }
+}
+
+void fgb_ret_c(fgb_cpu* cpu, const fgb_instruction* ins) {
+    if (cpu->regs.flags.c) {
+        fgb_ret_(cpu);
+    }
+}
+
+void fgb_ret_nz(fgb_cpu* cpu, const fgb_instruction* ins) {
+    if (!cpu->regs.flags.z) {
+        fgb_ret_(cpu);
+    }
+}
+
+void fgb_ret_nc(fgb_cpu* cpu, const fgb_instruction* ins) {
+    if (!cpu->regs.flags.c) {
+        fgb_ret_(cpu);
     }
 }
