@@ -35,6 +35,7 @@ static inline fgb_instruction* fgb_instruction_get(uint8_t opcode) {
 // x0
 void fgb_nop(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_stop(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_halt(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
 // LD reg16, imm
 void fgb_ld_bc_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
@@ -121,6 +122,85 @@ void fgb_add_hl_bc(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_add_hl_de(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_add_hl_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_add_hl_sp(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// LD B, reg8/(HL)
+void fgb_ld_b_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_b_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_b_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_b_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_b_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_b_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_b_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_b_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// LD C, reg8/(HL)
+void fgb_ld_c_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_c_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_c_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_c_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_c_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_c_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_c_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_c_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// LD D, reg8/(HL)
+void fgb_ld_d_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_d_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_d_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_d_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_d_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_d_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_d_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_d_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// LD E, reg8/(HL)
+void fgb_ld_e_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_e_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_e_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_e_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_e_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_e_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_e_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_e_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// LD H, reg8/(HL)
+void fgb_ld_h_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_h_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_h_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_h_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_h_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_h_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_h_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_h_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// LD L, reg8/(HL)
+void fgb_ld_l_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_l_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_l_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_l_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_l_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_l_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_l_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_l_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// LD A, reg8/(HL)
+void fgb_ld_a_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_a_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_a_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_a_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_a_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// LD (HL), reg8
+void fgb_ld_p_hl_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_p_hl_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_p_hl_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_p_hl_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_p_hl_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_p_hl_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_p_hl_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
 
 #endif // FGB_INSTRUCTION_H
