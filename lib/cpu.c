@@ -207,6 +207,25 @@ static inline uint8_t fgb_adc_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
     return result & 0xFF;
 }
 
+static inline uint8_t fgb_sub_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
+    cpu->regs.flags.c = b > a;
+    cpu->regs.flags.h = (b & 0xF) > (a & 0xF);
+    cpu->regs.flags.n = 1;
+    a -= b;
+    cpu->regs.flags.z = a == 0;
+    return a;
+}
+
+static inline uint8_t fgb_sbc_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
+    cpu->regs.flags.h = (b & 0xF) + cpu->regs.flags.c > (a & 0xF);
+    const uint8_t new_c = b + cpu->regs.flags.c > a;
+    cpu->regs.flags.n = 1;
+    a -= b + cpu->regs.flags.c;
+    cpu->regs.flags.c = new_c;
+    cpu->regs.flags.z = a == 0;
+    return a;
+}
+
 void fgb_nop(fgb_cpu* cpu, const fgb_instruction* ins) {
     (void)cpu;
     (void)ins;
@@ -844,4 +863,68 @@ void fgb_adc_a_a(fgb_cpu* cpu, const fgb_instruction* ins) {
 
 void fgb_adc_a_p_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.a = fgb_adc_u8(cpu, cpu->regs.a, fgb_mmu_read_u8(cpu, cpu->regs.hl));
+}
+
+void fgb_sub_a_b(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sub_u8(cpu, cpu->regs.a, cpu->regs.b);
+}
+
+void fgb_sub_a_c(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sub_u8(cpu, cpu->regs.a, cpu->regs.c);
+}
+
+void fgb_sub_a_d(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sub_u8(cpu, cpu->regs.a, cpu->regs.d);
+}
+
+void fgb_sub_a_e(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sub_u8(cpu, cpu->regs.a, cpu->regs.e);
+}
+
+void fgb_sub_a_h(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sub_u8(cpu, cpu->regs.a, cpu->regs.h);
+}
+
+void fgb_sub_a_l(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sub_u8(cpu, cpu->regs.a, cpu->regs.l);
+}
+
+void fgb_sub_a_a(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sub_u8(cpu, cpu->regs.a, cpu->regs.a);
+}
+
+void fgb_sub_a_p_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sub_u8(cpu, cpu->regs.a, fgb_mmu_read_u8(cpu, cpu->regs.hl));
+}
+
+void fgb_sbc_a_b(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sbc_u8(cpu, cpu->regs.a, cpu->regs.b);
+}
+
+void fgb_sbc_a_c(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sbc_u8(cpu, cpu->regs.a, cpu->regs.c);
+}
+
+void fgb_sbc_a_d(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sbc_u8(cpu, cpu->regs.a, cpu->regs.d);
+}
+
+void fgb_sbc_a_e(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sbc_u8(cpu, cpu->regs.a, cpu->regs.e);
+}
+
+void fgb_sbc_a_h(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sbc_u8(cpu, cpu->regs.a, cpu->regs.h);
+}
+
+void fgb_sbc_a_l(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sbc_u8(cpu, cpu->regs.a, cpu->regs.l);
+}
+
+void fgb_sbc_a_a(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sbc_u8(cpu, cpu->regs.a, cpu->regs.a);
+}
+
+void fgb_sbc_a_p_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_sbc_u8(cpu, cpu->regs.a, fgb_mmu_read_u8(cpu, cpu->regs.hl));
 }

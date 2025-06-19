@@ -222,5 +222,25 @@ void fgb_adc_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_adc_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_adc_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
+// SUB A, reg8/(HL)
+void fgb_sub_a_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sub_a_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sub_a_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sub_a_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sub_a_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sub_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sub_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sub_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// SBC A, reg8/(HL)
+void fgb_sbc_a_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sbc_a_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sbc_a_d(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sbc_a_e(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sbc_a_h(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sbc_a_l(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sbc_a_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_sbc_a_p_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
 
 #endif // FGB_INSTRUCTION_H
