@@ -576,6 +576,15 @@ void fgb_add_hl_sp(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.hl = fgb_add_u16(cpu, cpu->regs.hl, cpu->regs.sp);
 }
 
+void fgb_add_sp_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    const int sp = cpu->regs.sp + (int8_t)operand;
+    cpu->regs.flags.c = (cpu->regs.sp & 0xFF) + (operand & 0xFF) > 0xFF;
+    cpu->regs.flags.h = (cpu->regs.sp & 0xF) + (operand & 0xF) > 0xF;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.z = 0;
+    cpu->regs.sp = sp & 0xFFFF;
+}
+
 void fgb_ld_b_b(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.b = cpu->regs.b;
 }
@@ -1154,4 +1163,41 @@ void fgb_pop_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
 void fgb_pop_af(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.f = fgb_mmu_read_u8(cpu, cpu->regs.sp++) & 0xF0;
     cpu->regs.a = fgb_mmu_read_u8(cpu, cpu->regs.sp++);
+}
+
+void fgb_ld_p_imm_a(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    fgb_mmu_write(cpu, 0xFF00 + operand, cpu->regs.a);
+}
+
+void fgb_ld_a_p_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    cpu->regs.a = fgb_mmu_read_u8(cpu, 0xFF00 + operand);
+}
+
+void fgb_ld_p_c_a(fgb_cpu* cpu, const fgb_instruction* ins) {
+    fgb_mmu_write(cpu, 0xFF00 + cpu->regs.c, cpu->regs.a);
+}
+
+void fgb_ld_a_p_c(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.a = fgb_mmu_read_u8(cpu, 0xFF00 + cpu->regs.c);
+}
+
+void fgb_ld_p_imm16_a(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    fgb_mmu_write(cpu, operand, cpu->regs.a);
+}
+
+void fgb_ld_a_p_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
+    cpu->regs.a = fgb_mmu_read_u8(cpu, operand);
+}
+
+void fgb_ld_hl_sp_imm(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
+    const int hl = cpu->regs.sp + (int8_t)operand;
+    cpu->regs.flags.c = (cpu->regs.sp & 0xFF) + (operand & 0xFF) > 0xFF;
+    cpu->regs.flags.h = (cpu->regs.sp & 0xF) + (operand & 0xF) > 0xF;
+    cpu->regs.flags.n = 0;
+    cpu->regs.flags.z = 0;
+    cpu->regs.hl = hl & 0xFFFF;
+}
+
+void fgb_ld_sp_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
+    cpu->regs.sp = cpu->regs.hl;
 }

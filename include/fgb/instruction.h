@@ -123,6 +123,9 @@ void fgb_add_hl_de(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_add_hl_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_add_hl_sp(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
+// ADD SP, imm
+void fgb_add_sp_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+
 // LD B, reg8/(HL)
 void fgb_ld_b_b(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_ld_b_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
@@ -301,6 +304,16 @@ void fgb_pop_bc(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_pop_de(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_pop_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
 void fgb_pop_af(struct fgb_cpu* cpu, const fgb_instruction* ins);
+
+// Various LD ...
+void fgb_ld_p_imm_a(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_ld_a_p_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_ld_p_c_a(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_a_p_c(struct fgb_cpu* cpu, const fgb_instruction* ins);
+void fgb_ld_p_imm16_a(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_ld_a_p_imm16(struct fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand);
+void fgb_ld_hl_sp_imm(struct fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand);
+void fgb_ld_sp_hl(struct fgb_cpu* cpu, const fgb_instruction* ins);
 
 
 #endif // FGB_INSTRUCTION_H
