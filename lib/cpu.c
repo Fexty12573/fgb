@@ -108,7 +108,6 @@ void fgb_cpu_destroy(fgb_cpu* cpu) {
 void fgb_cpu_reset(fgb_cpu* cpu) {
     memset(&cpu->regs, 0, sizeof(cpu->regs));
     cpu->halted = false;
-    cpu->stopped = false;
 
     cpu->regs.pc = 0x0100;
     cpu->regs.sp = 0xFFFE;
@@ -132,52 +131,58 @@ void fgb_cpu_step(fgb_cpu* cpu) {
 }
 
 int fgb_cpu_execute(fgb_cpu* cpu) {
-    const uint8_t opcode = fgb_cpu_fetch(cpu);
-    const fgb_instruction* instruction = fgb_instruction_get(opcode);
-    assert(instruction->opcode == opcode);
+    // If the CPU is halted, just return max cycles so
+    // the caller isn't blocked
+    int cycles = FGB_CYCLES_PER_FRAME;
 
-    uint8_t op8 = 0;
-    uint16_t op16 = 0;
+    if (!cpu->halted) {
+        const uint8_t opcode = fgb_cpu_fetch(cpu);
+        const fgb_instruction* instruction = fgb_instruction_get(opcode);
+        assert(instruction->opcode == opcode);
 
-    switch (instruction->operand_size) {
-    case 0:
-        instruction->exec_0(cpu, instruction);
-        break;
+        uint8_t op8 = 0;
+        uint16_t op16 = 0;
 
-    case 1:
-        op8 = fgb_cpu_fetch(cpu);
-        instruction->exec_1(cpu, instruction, op8);
-        break;
-
-    case 2:
-        op16 = fgb_cpu_fetch_u16(cpu);
-        instruction->exec_2(cpu, instruction, op16);
-        break;
-
-    default:
-        log_error("Invalid operand size: %d", instruction->operand_size);
-        cpu->halted = true;
-        return FGB_CYCLES_PER_FRAME;
-    }
-
-    if (cpu->trace) {
         switch (instruction->operand_size) {
         case 0:
-            log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_0(instruction));
+            instruction->exec_0(cpu, instruction);
             break;
-        case 1:
-            log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_1(instruction, op8));
-            break;
-        case 2:
-            log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_2(instruction, op16));
-            break;
-        default:
-            log_info("UNKNOWN");
-            break;
-        }
-    }
 
-    const int cycles = instruction->cycles != 255 ? instruction->cycles : fgb_instruction_get_cb_cycles(op8);
+        case 1:
+            op8 = fgb_cpu_fetch(cpu);
+            instruction->exec_1(cpu, instruction, op8);
+            break;
+
+        case 2:
+            op16 = fgb_cpu_fetch_u16(cpu);
+            instruction->exec_2(cpu, instruction, op16);
+            break;
+
+        default:
+            log_error("Invalid operand size: %d", instruction->operand_size);
+            cpu->halted = true;
+            return FGB_CYCLES_PER_FRAME;
+        }
+
+        if (cpu->trace) {
+            switch (instruction->operand_size) {
+            case 0:
+                log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_0(instruction));
+                break;
+            case 1:
+                log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_1(instruction, op8));
+                break;
+            case 2:
+                log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_2(instruction, op16));
+                break;
+            default:
+                log_info("UNKNOWN");
+                break;
+            }
+        }
+
+        cycles = instruction->cycles != 255 ? instruction->cycles : fgb_instruction_get_cb_cycles(op8);
+    }
 
     // Update the timer
     for (int i = 0; i < cycles; i++) {
@@ -245,11 +250,15 @@ static const uint16_t fgb_interrupt_vector[] = {
 };
 
 static inline bool fgb_cpu_handle_irq(fgb_cpu* cpu, enum fgb_cpu_interrupt irq) {
-    if (!(cpu->interrupt.enable & irq) || !(cpu->interrupt.flags & irq)) {
+    if (!(cpu->interrupt.enable & cpu->interrupt.flags & irq)) {
         return false;
     }
 
-    fgb_call(cpu, fgb_interrupt_vector[irq]);
+    // Interrupt is only serviced if IME is set
+    if (cpu->ime) {
+        fgb_call(cpu, fgb_interrupt_vector[irq]);
+    }
+
     cpu->interrupt.flags &= ~irq; // Clear the interrupt flag
     cpu->ime = false; // Disable interrupts after handling
     cpu->halted = false; // Clear halted state
@@ -258,10 +267,6 @@ static inline bool fgb_cpu_handle_irq(fgb_cpu* cpu, enum fgb_cpu_interrupt irq) 
 }
 
 void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
-    if (!cpu->ime || cpu->stopped) {
-        return;
-    }
-
     if (fgb_cpu_handle_irq(cpu, IRQ_VBLANK)) return;
     if (fgb_cpu_handle_irq(cpu, IRQ_LCD)) return;
     if (fgb_cpu_handle_irq(cpu, IRQ_TIMER)) return;
@@ -380,7 +385,7 @@ void fgb_nop(fgb_cpu* cpu, const fgb_instruction* ins) {
 }
 
 void fgb_stop(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
-    cpu->stopped = true;
+    // Just gonna interpret STOP as a HALT because I cba
     cpu->halted = true;
 }
 

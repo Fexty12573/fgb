@@ -42,11 +42,7 @@ int main(int argc, char** argv) {
     
     emu->cpu->trace = false;
 
-    while (!emu->cpu->stopped) {
+    while (true) {
         fgb_cpu_step(emu->cpu);
     }
-
-    printf("CPU Halted/Stopped. Exiting\n");
-
-    return 0;
 }

@@ -78,7 +78,6 @@ typedef struct fgb_cpu {
 
     bool ime;
     bool halted;
-    bool stopped;
 
     bool trace;
 
