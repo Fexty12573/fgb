@@ -1,7 +1,7 @@
 #include "mmu.h"
+#include "cpu.h"
 
 #include <string.h>
-
 
 // -------------- Memory Map --------------
 // 0000 - 3FFF  16 KiB ROM bank 00              From cartridge, usually a fixed bank
@@ -18,18 +18,17 @@
 // FFFF - FFFF  Interrupt Enable register (IE)
 // ----------------------------------------
 
-#define MEMORY_RANGE_CART_START 0x0000
-#define MEMORY_RANGE_CART_END   0x8000
-
 
 static void fgb_mmu_reset(fgb_mmu* mmu);
 static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value);
 static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr);
 static uint16_t fgb_mmu_read_u16(const fgb_mmu* mmu, uint16_t addr);
 
-void fgb_mmu_init(fgb_mmu* mmu, fgb_cart* cart, const fgb_mmu_ops* ops) {
+void fgb_mmu_init(fgb_mmu* mmu, fgb_cart* cart, fgb_cpu* cpu, const fgb_mmu_ops* ops) {
     mmu->use_ext_data = false;
     mmu->cart = cart;
+    mmu->timer = &cpu->timer;
+    mmu->cpu = cpu;
 
     if (ops) {
         mmu->reset = ops->reset;
@@ -59,8 +58,18 @@ void fgb_mmu_reset(fgb_mmu* mmu) {
 }
 
 static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
-    if (addr < MEMORY_RANGE_CART_END) {
-        fgb_cart_write(mmu->cart, addr - MEMORY_RANGE_CART_START, value);
+    if (addr < 0x8000) {
+        fgb_cart_write(mmu->cart, addr, value);
+        return;
+    }
+
+    if (addr >= 0xFF04 && addr <= 0xFF07) {
+        fgb_timer_write(mmu->timer, addr, value);
+        return;
+    }
+
+    if (addr == 0xFFFF || addr == 0xFF0F) {
+        fgb_cpu_write(mmu->cpu, addr, value);
         return;
     }
 
@@ -68,8 +77,16 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
 }
 
 static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
-    if (addr < MEMORY_RANGE_CART_END) {
-        return fgb_cart_read(mmu->cart, addr - MEMORY_RANGE_CART_START);
+    if (addr < 0x8000) {
+        return fgb_cart_read(mmu->cart, addr);
+    }
+
+    if (addr >= 0xFF04 && addr <= 0xFF07) {
+        return fgb_timer_read(mmu->timer, addr);
+    }
+
+    if (addr == 0xFFFF || addr == 0xFF0F) {
+        return fgb_cpu_read(mmu->cpu, addr);
     }
     
     return mmu->data[addr];

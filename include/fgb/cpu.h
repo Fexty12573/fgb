@@ -2,10 +2,10 @@
 #define FGB_CPU_H
 
 #include "mmu.h"
+#include "timer.h"
 
 #include <stdbool.h>
 #include <stdint.h>
-
 
 #define FGB_CPU_CLOCK_SPEED     4194304 // 4.194304 MHz
 #define FGB_SCREEN_WIDTH        160
@@ -13,6 +13,14 @@
 #define FGB_SCREEN_REFRESH_RATE 60 // 60 Hz
 #define FGB_CYCLES_PER_FRAME    (FGB_CPU_CLOCK_SPEED / FGB_SCREEN_REFRESH_RATE)
 
+
+enum fgb_cpu_interrupt {
+    IRQ_VBLANK  = 1 << 0,
+    IRQ_LCD     = 1 << 1,
+    IRQ_TIMER   = 1 << 2,
+    IRQ_SERIAL  = 1 << 3,
+    IRQ_JOYPAD  = 1 << 4,
+};
 
 typedef struct fgb_cpu_regs {
     union {
@@ -62,12 +70,18 @@ typedef struct fgb_cpu_regs {
 typedef struct fgb_cpu {
     fgb_cpu_regs regs;
     fgb_mmu mmu;
+    fgb_timer timer;
     
     uint8_t screen[FGB_SCREEN_WIDTH * FGB_SCREEN_HEIGHT * 3]; // 3 bytes per pixel (RGB)
 
     bool ime;
     bool halted;
     bool stopped;
+
+    struct {
+        uint8_t enable;
+        uint8_t flags;
+    } interrupt;
 } fgb_cpu;
 
 
@@ -78,5 +92,9 @@ void fgb_cpu_destroy(fgb_cpu* cpu);
 void fgb_cpu_reset(fgb_cpu* cpu);
 void fgb_cpu_step(fgb_cpu* cpu); // Executes FGB_CYCLES_PER_FRAME cycles
 int fgb_cpu_execute(fgb_cpu* cpu); // Executes a single instruction and returns its cycles
+void fgb_cpu_request_interrupt(fgb_cpu* cpu, enum fgb_cpu_interrupt interrupt);
+
+void fgb_cpu_write(fgb_cpu* cpu, uint16_t addr, uint8_t value);
+uint8_t fgb_cpu_read(const fgb_cpu* cpu, uint16_t addr);
 
 #endif // FGB_CPU_H

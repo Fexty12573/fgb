@@ -10,6 +10,7 @@
 
 static uint8_t fgb_cpu_fetch(fgb_cpu* cpu);
 static uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu);
+static void fgb_cpu_handle_interrupts(fgb_cpu* cpu);
 #define fgb_mmu_write(cpu, addr, value) (cpu)->mmu.write_u8(&(cpu)->mmu, addr, value)
 #define fgb_mmu_read_u8(cpu, addr) (cpu)->mmu.read_u8(&(cpu)->mmu, addr)
 #define fgb_mmu_read_u16(cpu, addr) (cpu)->mmu.read_u16(&(cpu)->mmu, addr)
@@ -73,7 +74,8 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart) {
 
     memset(cpu, 0, sizeof(fgb_cpu));
 
-    fgb_mmu_init(&cpu->mmu, cart, NULL);
+    fgb_timer_init(&cpu->timer, cpu);
+    fgb_mmu_init(&cpu->mmu, cart, cpu, NULL);
     fgb_cpu_reset(cpu);
 
     return cpu;
@@ -88,7 +90,8 @@ fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, const fgb_mmu_ops* mmu_ops) {
 
     memset(cpu, 0, sizeof(fgb_cpu));
 
-    fgb_mmu_init(&cpu->mmu, cart, mmu_ops);
+    fgb_timer_init(&cpu->timer, cpu);
+    fgb_mmu_init(&cpu->mmu, cart, cpu, mmu_ops);
     fgb_cpu_reset(cpu);
 
     return cpu;
@@ -151,7 +154,51 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
         return FGB_CYCLES_PER_FRAME;
     }
 
-    return instruction->cycles != 255 ? instruction->cycles : fgb_instruction_get_cb_cycles(op1);
+    const int cycles = instruction->cycles != 255 ? instruction->cycles : fgb_instruction_get_cb_cycles(op1);
+
+    // Update the timer
+    for (int i = 0; i < cycles; i++) {
+        fgb_timer_tick(&cpu->timer);
+    }
+
+    // Handle interrupts
+    fgb_cpu_handle_interrupts(cpu);
+
+    return cycles;
+}
+
+void fgb_cpu_request_interrupt(fgb_cpu* cpu, enum fgb_cpu_interrupt interrupt) {
+    cpu->interrupt.flags |= (uint8_t)interrupt;
+}
+
+void fgb_cpu_write(fgb_cpu* cpu, uint16_t addr, uint8_t value) {
+    switch (addr) {
+    case 0xFFFF:
+        cpu->interrupt.enable = value;
+        return;
+
+    case 0xFF0F:
+        cpu->interrupt.flags = value;
+        break;
+
+    default:
+        log_warn("Unknown address for CPU write: 0x%04X", addr);
+        break;
+    }
+}
+
+uint8_t fgb_cpu_read(const fgb_cpu* cpu, uint16_t addr) {
+    switch (addr) {
+    case 0xFFFF:
+        return cpu->interrupt.enable;
+
+    case 0xFF0F:
+        return cpu->interrupt.flags;
+
+    default:
+        log_warn("Unknown address for CPU read: 0x%04X", addr);
+        return 0xAA;
+    }
 }
 
 uint8_t fgb_cpu_fetch(fgb_cpu* cpu) {
@@ -162,6 +209,41 @@ uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu) {
     const uint16_t value = fgb_mmu_read_u16(cpu, cpu->regs.pc);
     cpu->regs.pc += 2;
     return value;
+}
+
+static inline void fgb_call(fgb_cpu* cpu, uint16_t dest);
+
+static const uint16_t fgb_interrupt_vector[] = {
+    [IRQ_VBLANK] = 0x0040,
+    [IRQ_LCD]    = 0x0048,
+    [IRQ_TIMER]  = 0x0050,
+    [IRQ_SERIAL] = 0x0058,
+    [IRQ_JOYPAD] = 0x0060,
+};
+
+static inline bool fgb_cpu_handle_irq(fgb_cpu* cpu, enum fgb_cpu_interrupt irq) {
+    if (!(cpu->interrupt.enable & irq) || !(cpu->interrupt.flags & irq)) {
+        return false;
+    }
+
+    fgb_call(cpu, fgb_interrupt_vector[irq]);
+    cpu->interrupt.flags &= ~irq; // Clear the interrupt flag
+    cpu->ime = false; // Disable interrupts after handling
+    cpu->halted = false; // Clear halted state
+
+    return true;
+}
+
+void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
+    if (!cpu->ime || cpu->stopped) {
+        return;
+    }
+
+    if (fgb_cpu_handle_irq(cpu, IRQ_VBLANK)) return;
+    if (fgb_cpu_handle_irq(cpu, IRQ_LCD)) return;
+    if (fgb_cpu_handle_irq(cpu, IRQ_TIMER)) return;
+    if (fgb_cpu_handle_irq(cpu, IRQ_SERIAL)) return;
+    fgb_cpu_handle_irq(cpu, IRQ_JOYPAD);
 }
 
 
