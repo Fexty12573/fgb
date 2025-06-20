@@ -1,10 +1,13 @@
 #include "instruction.h"
+
+#include <string.h>
+
 #include "cpu.h"
 
 #include <ulog.h>
 
 // cycles are multiplied by 4 to convert CPU cycles to clock cycles
-#define INS(disasm, opcode, op_size, cycles, exec) { disasm, opcode, op_size, (cycles) * 4, { (void*)(exec) } }
+#define INS(disasm, opcode, op_size, cycles, exec) { disasm, opcode, op_size, (cycles) * 4, { (void*)(exec) }, { (void*)(fgb_fmt_##op_size) } }
 
 
 static void fgb_unimplemented_0(fgb_cpu* cpu, const fgb_instruction* ins) {
@@ -24,6 +27,22 @@ static void fgb_unimplemented_2(fgb_cpu* cpu, const fgb_instruction* ins, uint16
     snprintf(disasm, sizeof(disasm), ins->disassembly, operand);
     log_error("Unimplemented instruction: %s (0x%02X) at 0x%04X", disasm, ins->opcode, cpu->regs.pc);
     cpu->halted = true;
+}
+
+static char fmt_buffer[64];
+static inline char* fgb_fmt_0(const fgb_instruction* ins) {
+    strcpy_s(fmt_buffer, sizeof(fmt_buffer), ins->disassembly);
+    return fmt_buffer;
+}
+
+static inline char* fgb_fmt_1(const fgb_instruction* ins, uint8_t operand) {
+    snprintf(fmt_buffer, sizeof(fmt_buffer), ins->disassembly, operand);
+    return fmt_buffer;
+}
+
+static inline char* fgb_fmt_2(const fgb_instruction* ins, uint16_t operand) {
+    snprintf(fmt_buffer, sizeof(fmt_buffer), ins->disassembly, operand);
+    return fmt_buffer;
 }
 
 

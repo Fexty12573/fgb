@@ -3,6 +3,8 @@
 
 #include <string.h>
 
+#include "ulog.h"
+
 // -------------- Memory Map --------------
 // 0000 - 3FFF  16 KiB ROM bank 00              From cartridge, usually a fixed bank
 // 4000 - 7FFF  16 KiB ROM Bank 01–NN           From cartridge, switchable bank via mapper (if any)
@@ -28,6 +30,7 @@ void fgb_mmu_init(fgb_mmu* mmu, fgb_cart* cart, fgb_cpu* cpu, const fgb_mmu_ops*
     mmu->use_ext_data = false;
     mmu->cart = cart;
     mmu->timer = &cpu->timer;
+    mmu->io = &cpu->io;
     mmu->cpu = cpu;
 
     if (ops) {
@@ -73,6 +76,11 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
         return;
     }
 
+    if (addr > 0xFF00 && addr < 0xFF80) {
+        fgb_io_write(mmu->io, addr, value);
+        return;
+    }
+
     mmu->data[addr] = value;
 }
 
@@ -87,6 +95,10 @@ static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
 
     if (addr == 0xFFFF || addr == 0xFF0F) {
         return fgb_cpu_read(mmu->cpu, addr);
+    }
+
+    if (addr > 0xFF00 && addr < 0xFF80) {
+        return fgb_io_read(mmu->io, addr);
     }
     
     return mmu->data[addr];

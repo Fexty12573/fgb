@@ -13,6 +13,10 @@ typedef void (*fgb_instruction_exec_0)(struct fgb_cpu* cpu, const struct fgb_ins
 typedef void (*fgb_instruction_exec_1)(struct fgb_cpu* cpu, const struct fgb_instruction* ins, uint8_t operand);
 typedef void (*fgb_instruction_exec_2)(struct fgb_cpu* cpu, const struct fgb_instruction* ins, uint16_t operand);
 
+typedef char* (*fgb_instruction_fmt_0)(const struct fgb_instruction* ins);
+typedef char* (*fgb_instruction_fmt_1)(const struct fgb_instruction* ins, uint8_t operand);
+typedef char* (*fgb_instruction_fmt_2)(const struct fgb_instruction* ins, uint16_t operand);
+
 typedef struct fgb_instruction {
     const char* disassembly;
     uint8_t opcode;
@@ -23,6 +27,12 @@ typedef struct fgb_instruction {
         fgb_instruction_exec_0 exec_0;
         fgb_instruction_exec_1 exec_1;
         fgb_instruction_exec_2 exec_2;
+    };
+    union {
+        void* fmt;
+        fgb_instruction_fmt_0 fmt_0;
+        fgb_instruction_fmt_1 fmt_1;
+        fgb_instruction_fmt_2 fmt_2;
     };
 } fgb_instruction;
 

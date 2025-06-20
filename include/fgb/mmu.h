@@ -6,6 +6,7 @@
 
 #include "cart.h"
 #include "timer.h"
+#include "io.h"
 
 #define FGB_MEMORY_SIZE 0x10000 // 64KB mmu size
 
@@ -21,6 +22,7 @@ typedef struct fgb_mmu {
 
     fgb_cart* cart;
     fgb_timer* timer;
+    fgb_io* io;
     struct fgb_cpu* cpu;
 
     void (*reset)(struct fgb_mmu* mmu);

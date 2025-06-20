@@ -72,9 +72,12 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart) {
         return NULL;
     }
 
+    ulog_set_quiet(true);
+
     memset(cpu, 0, sizeof(fgb_cpu));
 
     fgb_timer_init(&cpu->timer, cpu);
+    fgb_io_init(&cpu->io, cpu);
     fgb_mmu_init(&cpu->mmu, cart, cpu, NULL);
     fgb_cpu_reset(cpu);
 
@@ -91,6 +94,7 @@ fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, const fgb_mmu_ops* mmu_ops) {
     memset(cpu, 0, sizeof(fgb_cpu));
 
     fgb_timer_init(&cpu->timer, cpu);
+    fgb_io_init(&cpu->io, cpu);
     fgb_mmu_init(&cpu->mmu, cart, cpu, mmu_ops);
     fgb_cpu_reset(cpu);
 
@@ -132,7 +136,8 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
     const fgb_instruction* instruction = fgb_instruction_get(opcode);
     assert(instruction->opcode == opcode);
 
-    uint8_t op1 = 0;
+    uint8_t op8 = 0;
+    uint16_t op16 = 0;
 
     switch (instruction->operand_size) {
     case 0:
@@ -140,12 +145,13 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
         break;
 
     case 1:
-        op1 = fgb_cpu_fetch(cpu);
-        instruction->exec_1(cpu, instruction, op1);
+        op8 = fgb_cpu_fetch(cpu);
+        instruction->exec_1(cpu, instruction, op8);
         break;
 
     case 2:
-        instruction->exec_2(cpu, instruction, fgb_cpu_fetch_u16(cpu));
+        op16 = fgb_cpu_fetch_u16(cpu);
+        instruction->exec_2(cpu, instruction, op16);
         break;
 
     default:
@@ -154,7 +160,24 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
         return FGB_CYCLES_PER_FRAME;
     }
 
-    const int cycles = instruction->cycles != 255 ? instruction->cycles : fgb_instruction_get_cb_cycles(op1);
+    if (cpu->trace) {
+        switch (instruction->operand_size) {
+        case 0:
+            log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_0(instruction));
+            break;
+        case 1:
+            log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_1(instruction, op8));
+            break;
+        case 2:
+            log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_2(instruction, op16));
+            break;
+        default:
+            log_info("UNKNOWN");
+            break;
+        }
+    }
+
+    const int cycles = instruction->cycles != 255 ? instruction->cycles : fgb_instruction_get_cb_cycles(op8);
 
     // Update the timer
     for (int i = 0; i < cycles; i++) {

@@ -3,6 +3,7 @@
 
 #include "mmu.h"
 #include "timer.h"
+#include "io.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -71,12 +72,15 @@ typedef struct fgb_cpu {
     fgb_cpu_regs regs;
     fgb_mmu mmu;
     fgb_timer timer;
+    fgb_io io;
     
     uint8_t screen[FGB_SCREEN_WIDTH * FGB_SCREEN_HEIGHT * 3]; // 3 bytes per pixel (RGB)
 
     bool ime;
     bool halted;
     bool stopped;
+
+    bool trace;
 
     struct {
         uint8_t enable;
