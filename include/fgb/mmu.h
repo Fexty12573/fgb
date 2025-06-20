@@ -9,14 +9,21 @@
 #include "io.h"
 
 #define FGB_MEMORY_SIZE 0x10000 // 64KB mmu size
+#define FGB_VRAM_SIZE   0x2000
+#define FGB_WRAM_SIZE   (0x1000 + 0x1000) // 2x 8 KiB Banks
+#define FGB_HRAM_SIZE   0x7F
 
 
 typedef struct fgb_mmu {
     union {
-        uint8_t data[FGB_MEMORY_SIZE];
         struct {
             uint8_t* ext_data;
             size_t ext_data_size;
+        };
+        struct {
+            uint8_t vram[FGB_VRAM_SIZE];
+            uint8_t wram[FGB_WRAM_SIZE];
+            uint8_t hram[FGB_HRAM_SIZE];
         };
     };
 

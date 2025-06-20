@@ -53,16 +53,38 @@ void fgb_mmu_init(fgb_mmu* mmu, fgb_cart* cart, fgb_cpu* cpu, const fgb_mmu_ops*
 }
 
 void fgb_mmu_reset(fgb_mmu* mmu) {
-    if (mmu->use_ext_data) {
-        memset(mmu->ext_data, 0, mmu->ext_data_size);
-    } else {
-        memset(mmu->data, 0, sizeof(mmu->data));
-    }
+    
 }
 
 static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
+    // Cart
     if (addr < 0x8000) {
         fgb_cart_write(mmu->cart, addr, value);
+        return;
+    }
+
+    // VRAM (>= 0x8000)
+    if (addr < 0xA000) {
+        mmu->vram[addr - 0x8000] = value;
+        return;
+    }
+
+    // External RAM Bank (>= 0xA000)
+    if (addr < 0xC000) {
+        log_error("External RAM Banks not implemented");
+        return;
+    }
+
+    // WRAM (>= 0xC000)
+    if (addr < 0xE000) {
+        mmu->wram[addr - 0xC000] = value;
+        return;
+    }
+
+    // ECHO RAM (>= 0xE000)
+    if (addr < 0xFE00) {
+        // Maps directly to C000 - DDFF
+        mmu->wram[addr - 0xE000] = value;
         return;
     }
 
@@ -81,12 +103,41 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
         return;
     }
 
-    mmu->data[addr] = value;
+    // HRAM
+    if (addr >= 0xFF80 && addr < 0xFFFF) {
+        mmu->hram[addr - 0xFF80] = value;
+        return;
+    }
+
+    log_error("Unmapped memory write to 0x%04X", addr);
 }
 
 static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
+    // Cart
     if (addr < 0x8000) {
         return fgb_cart_read(mmu->cart, addr);
+    }
+
+    // VRAM (>= 0x8000)
+    if (addr < 0xA000) {
+        return mmu->vram[addr - 0x8000];
+    }
+
+    // External RAM Bank (>= 0xA000)
+    if (addr < 0xC000) {
+        log_error("External RAM Banks not implemented");
+        return 0xAA; // Return a default value
+    }
+
+    // WRAM (>= 0xC000)
+    if (addr < 0xE000) {
+        return mmu->wram[addr - 0xC000];
+    }
+
+    // ECHO RAM (>= 0xE000)
+    if (addr < 0xFE00) {
+        // Maps directly to C000 - DDFF
+        return mmu->wram[addr - 0xE000];
     }
 
     if (addr >= 0xFF04 && addr <= 0xFF07) {
@@ -100,8 +151,14 @@ static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
     if (addr > 0xFF00 && addr < 0xFF80) {
         return fgb_io_read(mmu->io, addr);
     }
-    
-    return mmu->data[addr];
+
+    // HRAM
+    if (addr >= 0xFF80 && addr < 0xFFFF) {
+        return mmu->hram[addr - 0xFF80];
+    }
+
+    log_error("Unmapped memory read from 0x%04X", addr);
+    return 0xAA; // Return a default value for unmapped reads
 }
 
 static uint16_t fgb_mmu_read_u16(const fgb_mmu* mmu, uint16_t addr) {
