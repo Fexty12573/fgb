@@ -27,7 +27,7 @@ static void fgb_unimplemented_2(fgb_cpu* cpu, const fgb_instruction* ins, uint16
 }
 
 
-fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT] = {
+const fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT] = {
     INS("NOP", 0x00, 0, 1, fgb_nop),
     INS("LD BC,0x%04X", 0x01, 2, 3, fgb_ld_bc_imm),
     INS("LD (BC),A", 0x02, 0, 2, fgb_ld_p_bc_a),
@@ -302,7 +302,7 @@ fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT] = {
 };
 
 
-uint8_t fgb_cb_instruction_cycles[FGB_INSTRUCTION_COUNT] = {
+const uint8_t fgb_cb_instruction_cycles[FGB_INSTRUCTION_COUNT] = {
     2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
     2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,
     2, 2, 2, 2, 2, 2, 4, 2, 2, 2, 2, 2, 2, 2, 4, 2,

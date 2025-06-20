@@ -26,10 +26,10 @@ typedef struct fgb_instruction {
     };
 } fgb_instruction;
 
-extern fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT];
-extern uint8_t fgb_cb_instruction_cycles[FGB_INSTRUCTION_COUNT];
+extern const fgb_instruction fgb_instruction_table[FGB_INSTRUCTION_COUNT];
+extern const uint8_t fgb_cb_instruction_cycles[FGB_INSTRUCTION_COUNT];
 
-static inline fgb_instruction* fgb_instruction_get(uint8_t opcode) {
+static inline const fgb_instruction* fgb_instruction_get(uint8_t opcode) {
     return fgb_instruction_table + opcode;
 }
 
