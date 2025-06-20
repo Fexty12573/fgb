@@ -33,7 +33,7 @@ static void mock_cpu_init(size_t tester_ins_mem_size, uint8_t* tester_ins_mem) {
         .data_size = tester_ins_mem_size
     };
 
-    cpu = fgb_cpu_create_with(&ops);
+    cpu = fgb_cpu_create_with(NULL, &ops);
     mem_access_count = 0;
 }
 

@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "cart.h"
+
 #define FGB_MEMORY_SIZE 0x10000 // 64KB mmu size
 
 
@@ -15,6 +17,8 @@ typedef struct fgb_mmu {
             size_t ext_data_size;
         };
     };
+
+    fgb_cart* cart;
 
     void (*reset)(struct fgb_mmu* mmu);
     void (*write_u8)(struct fgb_mmu* mmu, uint16_t addr, uint8_t value);
@@ -32,6 +36,6 @@ typedef struct fgb_mem_ops {
     size_t data_size;
 } fgb_mmu_ops;
 
-void fgb_mmu_init(fgb_mmu* mmu, const fgb_mmu_ops* ops);
+void fgb_mmu_init(fgb_mmu* mmu, fgb_cart* cart, const fgb_mmu_ops* ops); // ops may be NULL
 
 #endif // FGB_MEMORY_H

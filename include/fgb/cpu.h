@@ -71,8 +71,8 @@ typedef struct fgb_cpu {
 } fgb_cpu;
 
 
-fgb_cpu* fgb_cpu_create(void);
-fgb_cpu* fgb_cpu_create_with(const fgb_mmu_ops* mmu_ops);
+fgb_cpu* fgb_cpu_create(fgb_cart* cart);
+fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, const fgb_mmu_ops* mmu_ops);
 void fgb_cpu_destroy(fgb_cpu* cpu);
 
 void fgb_cpu_reset(fgb_cpu* cpu);

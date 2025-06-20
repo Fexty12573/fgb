@@ -64,7 +64,7 @@ static const struct fgb_init_value fgb_init_table[] = {
 };
 
 
-fgb_cpu* fgb_cpu_create(void) {
+fgb_cpu* fgb_cpu_create(fgb_cart* cart) {
     fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
     if (!cpu) {
         return NULL;
@@ -72,13 +72,13 @@ fgb_cpu* fgb_cpu_create(void) {
 
     memset(cpu, 0, sizeof(fgb_cpu));
 
-    fgb_mmu_init(&cpu->mmu, NULL);
+    fgb_mmu_init(&cpu->mmu, cart, NULL);
     fgb_cpu_reset(cpu);
 
     return cpu;
 }
 
-fgb_cpu* fgb_cpu_create_with(const fgb_mmu_ops* mmu_ops) {
+fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, const fgb_mmu_ops* mmu_ops) {
     fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
     if (!cpu) {
         return NULL;
@@ -86,7 +86,7 @@ fgb_cpu* fgb_cpu_create_with(const fgb_mmu_ops* mmu_ops) {
 
     memset(cpu, 0, sizeof(fgb_cpu));
 
-    fgb_mmu_init(&cpu->mmu, mmu_ops);
+    fgb_mmu_init(&cpu->mmu, cart, mmu_ops);
     fgb_cpu_reset(cpu);
 
     return cpu;
