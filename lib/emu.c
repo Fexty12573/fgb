@@ -1,0 +1,40 @@
+#include "emu.h"
+
+#include <stdlib.h>
+
+#include <ulog.h>
+
+
+fgb_emu* fgb_emu_create(const uint8_t* cart_data, size_t cart_size) {
+    fgb_emu* emu = malloc(sizeof(fgb_emu));
+    if (!emu) {
+        log_error("Failed to allocate emulator");
+        return NULL;
+    }
+
+    emu->cart = fgb_cart_load(cart_data, cart_size);
+    if (!emu->cart) {
+        fgb_emu_destroy(emu);
+        return NULL;
+    }
+
+    emu->cpu = fgb_cpu_create(emu->cart);
+    if (!emu->cpu) {
+        fgb_emu_destroy(emu);
+        return NULL;
+    }
+
+    emu->mmu = &emu->cpu->mmu;
+
+    return emu;
+}
+
+void fgb_emu_destroy(fgb_emu* emu) {
+    if (emu->cart) fgb_cart_destroy(emu->cart);
+    if (emu->cpu) fgb_cpu_destroy(emu->cpu);
+    emu->cart = NULL;
+    emu->cpu = NULL;
+    emu->mmu = NULL;
+
+    free(emu);
+}

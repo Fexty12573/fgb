@@ -67,6 +67,7 @@ static const struct fgb_init_value fgb_init_table[] = {
 fgb_cpu* fgb_cpu_create(fgb_cart* cart) {
     fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
     if (!cpu) {
+        log_error("Failed to allocate CPU");
         return NULL;
     }
 
@@ -81,6 +82,7 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart) {
 fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, const fgb_mmu_ops* mmu_ops) {
     fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
     if (!cpu) {
+        log_error("Failed to allocate CPU");
         return NULL;
     }
 
@@ -110,7 +112,7 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
     cpu->regs.hl = 0x014D;
     
     for (size_t i = 0; i < sizeof(fgb_init_table) / sizeof(fgb_init_table[0]); i++) {
-        cpu->mmu.write_u8(&cpu->mmu, fgb_init_table[i].addr, fgb_init_table[i].value);
+        fgb_mmu_write(cpu, fgb_init_table[i].addr, fgb_init_table[i].value);
     }
 }
 

@@ -8,6 +8,6 @@ add_subdirectory(external/gbit)
 add_subdirectory(lib)
 add_subdirectory(test)
 
-add_executable(${PROJECT_NAME} src/main.c "include/fgb/cart.h")
+add_executable(${PROJECT_NAME} src/main.c "include/fgb/cart.h" "include/fgb/emu.h")
 
 target_link_libraries(${PROJECT_NAME} PRIVATE libfgb)
