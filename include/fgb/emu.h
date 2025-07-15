@@ -18,5 +18,7 @@ typedef struct fgb_emu {
 fgb_emu* fgb_emu_create(const uint8_t* cart_data, size_t cart_size);
 void fgb_emu_destroy(fgb_emu* emu);
 
+void fgb_emu_set_log_level(fgb_emu* emu, enum ulog_level level);
+
 
 #endif // FGB_EMU_H

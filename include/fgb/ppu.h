@@ -18,7 +18,8 @@ typedef struct fgb_ppu {
     uint8_t vram[FGB_PPU_VRAM_SIZE];
     uint8_t oam[FGB_PPU_OAM_SIZE];
 
-    uint32_t cycles;
+    uint32_t mode_cycles; // Cycles for the current mode
+    uint32_t frame_cycles; // Cycles for the current frame
 
     union {
         uint8_t value;

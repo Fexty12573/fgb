@@ -102,6 +102,7 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
 
     if (addr >= 0xFF40 && addr < 0xFF50) {
         fgb_ppu_write(mmu->ppu, addr, value);
+        return;
     }
 
     if (addr == 0xFFFF || addr == 0xFF0F) {
@@ -109,7 +110,7 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
         return;
     }
 
-    if (addr > 0xFF00 && addr < 0xFF80) {
+    if (addr >= 0xFF00 && addr < 0xFF80) {
         fgb_io_write(mmu->io, addr, value);
         return;
     }
@@ -168,7 +169,7 @@ static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
         return fgb_cpu_read(mmu->cpu, addr);
     }
 
-    if (addr > 0xFF00 && addr < 0xFF80) {
+    if (addr >= 0xFF00 && addr < 0xFF80) {
         return fgb_io_read(mmu->io, addr);
     }
 

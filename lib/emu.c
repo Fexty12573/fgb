@@ -45,3 +45,12 @@ void fgb_emu_destroy(fgb_emu* emu) {
 
     free(emu);
 }
+
+void fgb_emu_set_log_level(fgb_emu* emu, enum ulog_level level) {
+    if (!emu || !emu->cpu) {
+        log_error("Emulator or CPU not initialized");
+        return;
+    }
+
+    ulog_set_level(level);
+}

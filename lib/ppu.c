@@ -6,10 +6,10 @@
 
 #include <ulog.h>
 
-#define FGB_PPU_OAM_SCAN_CYCLES 80
-#define FGB_PPU_SCANLINE_CYCLES 172
-#define FGB_PPU_HBLANK_CYCLES   204
-#define FGB_PPU_VBLANK_CYCLES   456
+#define FGB_PPU_OAM_SCAN_CYCLES (80)  // T-cycles
+#define FGB_PPU_SCANLINE_CYCLES (172) // T-cycles
+#define FGB_PPU_HBLANK_CYCLES   (204) // T-cycles
+#define FGB_PPU_VBLANK_CYCLES   (456) // T-cycles
 
 
 typedef struct fgb_sprite {
@@ -66,9 +66,53 @@ void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
         return;
     }
 
-    ppu->cycles += cycles;
+    ppu->mode_cycles += cycles;
+    ppu->frame_cycles += cycles;
 
-    
+    switch (ppu->stat.mode) {
+    case PPU_MODE_OAM_SCAN:
+        if (ppu->mode_cycles >= FGB_PPU_OAM_SCAN_CYCLES) {
+            ppu->mode_cycles -= FGB_PPU_OAM_SCAN_CYCLES;
+            ppu->stat.mode = PPU_MODE_DRAW;
+        }
+        break;
+
+    case PPU_MODE_DRAW:
+        if (ppu->mode_cycles >= FGB_PPU_SCANLINE_CYCLES) {
+            ppu->ly++;
+            if (ppu->ly == 144) {
+                ppu->stat.mode = PPU_MODE_VBLANK;
+                ppu->stat.mode_1_int = 1; // Set mode 1 interrupt flag
+            }
+            else {
+                ppu->stat.mode = PPU_MODE_HBLANK;
+                ppu->stat.mode_0_int = 1; // Set mode 0 interrupt flag
+            }
+        }
+        break;
+
+    case PPU_MODE_HBLANK:
+        if (ppu->mode_cycles >= FGB_PPU_HBLANK_CYCLES) {
+            ppu->mode_cycles -= FGB_PPU_HBLANK_CYCLES;
+            ppu->stat.mode = PPU_MODE_OAM_SCAN;
+            ppu->stat.mode_2_int = 1; // Set mode 2 interrupt flag
+        }
+        break;
+
+    case PPU_MODE_VBLANK:
+        if (ppu->mode_cycles >= FGB_PPU_VBLANK_CYCLES) {
+            ppu->mode_cycles -= FGB_PPU_VBLANK_CYCLES;
+            ppu->ly++;
+            if (ppu->ly >= 154) {
+                ppu->ly = 0;
+                ppu->stat.mode = PPU_MODE_OAM_SCAN;
+                ppu->stat.mode_0_int = 1; // Set mode 0 interrupt flag
+            }
+        }
+        break;
+    }
+
+
 }
 
 void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
@@ -146,10 +190,21 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
 
 // TODO: Add checks for if the memory is even accessible
 void fgb_ppu_write_vram(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
+    // VRAM is only accessible during VBLANK and HBLANK
+    if (ppu->stat.mode != PPU_MODE_VBLANK && ppu->stat.mode != PPU_MODE_HBLANK) {
+        log_warn("PPU: Attempt to write to VRAM outside of VBLANK or OAM scan mode");
+        return;
+    }
+
     ppu->vram[addr] = value;
 }
 
 uint8_t fgb_ppu_read_vram(const fgb_ppu* ppu, uint16_t addr) {
+    if (ppu->stat.mode != PPU_MODE_VBLANK && ppu->stat.mode != PPU_MODE_HBLANK) {
+        log_warn("PPU: Attempt to read from VRAM outside of VBLANK or OAM scan mode");
+        return 0xFF; // Return a default value
+    }
+
     return ppu->vram[addr];
 }
 

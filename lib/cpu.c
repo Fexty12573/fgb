@@ -15,6 +15,8 @@ static void fgb_cpu_handle_interrupts(fgb_cpu* cpu);
 #define fgb_mmu_read_u8(cpu, addr) (cpu)->mmu.read_u8(&(cpu)->mmu, addr)
 #define fgb_mmu_read_u16(cpu, addr) (cpu)->mmu.read_u16(&(cpu)->mmu, addr)
 
+#define FGB_BP_ADDR_NONE 0xFFFF
+
 struct fgb_init_value {
     uint16_t addr;
     uint8_t value;
@@ -123,13 +125,34 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
     for (size_t i = 0; i < sizeof(fgb_init_table) / sizeof(fgb_init_table[0]); i++) {
         fgb_mmu_write(cpu, fgb_init_table[i].addr, fgb_init_table[i].value);
     }
+
+    for (int i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
+        cpu->breakpoints[i] = FGB_BP_ADDR_NONE;
+    }
 }
 
 void fgb_cpu_step(fgb_cpu* cpu) {
     int cycles = 0;
 
+    if (cpu->debugging && !cpu->do_step) {
+        return;
+    }
+
     while (cycles < FGB_CYCLES_PER_FRAME) {
         cycles += fgb_cpu_execute(cpu);
+
+        for (int i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
+            if (cpu->breakpoints[i] != FGB_BP_ADDR_NONE && cpu->regs.pc == cpu->breakpoints[i]) {
+                log_info("Breakpoint hit at 0x%04X", cpu->regs.pc);
+                cpu->debugging = true;
+                cpu->do_step = false;
+            }
+        }
+
+        if (cpu->debugging) {
+            cpu->do_step = false; // Reset step flag after stepping
+            break;
+        }
     }
 }
 
@@ -139,6 +162,7 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
     int cycles = FGB_CYCLES_PER_FRAME;
 
     if (!cpu->halted) {
+        const uint16_t addr = cpu->regs.pc; // Need to store it here in case of a jump
         const uint8_t opcode = fgb_cpu_fetch(cpu);
         const fgb_instruction* instruction = fgb_instruction_get(opcode);
         assert(instruction->opcode == opcode);
@@ -168,15 +192,16 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
         }
 
         if (cpu->trace) {
+            
             switch (instruction->operand_size) {
             case 0:
-                log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_0(instruction));
+                log_info("0x%04X: %s", addr, instruction->fmt_0(instruction));
                 break;
             case 1:
-                log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_1(instruction, op8));
+                log_info("0x%04X: %s", addr, instruction->fmt_1(instruction, op8));
                 break;
             case 2:
-                log_info("0x%04X: %s", cpu->regs.pc, instruction->fmt_2(instruction, op16));
+                log_info("0x%04X: %s", addr, instruction->fmt_2(instruction, op16));
                 break;
             default:
                 log_info("UNKNOWN");
@@ -194,6 +219,9 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
 
     // Handle interrupts
     fgb_cpu_handle_interrupts(cpu);
+
+    // Update PPU
+    fgb_ppu_tick(cpu->ppu, cycles);
 
     return cycles;
 }
@@ -230,6 +258,95 @@ uint8_t fgb_cpu_read(const fgb_cpu* cpu, uint16_t addr) {
         log_warn("Unknown address for CPU read: 0x%04X", addr);
         return 0xAA;
     }
+}
+
+void fgb_cpu_dump_state(const fgb_cpu* cpu) {
+    log_info("CPU State -----------------------");
+    log_info("Registers:");
+    log_info("  AF: 0x%04X", cpu->regs.af);
+    log_info("  BC: 0x%04X", cpu->regs.bc);
+    log_info("  DE: 0x%04X", cpu->regs.de);
+    log_info("  HL: 0x%04X", cpu->regs.hl);
+    log_info("  SP: 0x%04X", cpu->regs.sp);
+    log_info("  PC: 0x%04X", cpu->regs.pc);
+    log_info("Flags:");
+    log_info("  Z: %d", cpu->regs.flags.z);
+    log_info("  N: %d", cpu->regs.flags.n);
+    log_info("  H: %d", cpu->regs.flags.h);
+    log_info("  C: %d", cpu->regs.flags.c);
+    log_info("IME: %d", cpu->ime);
+    log_info("Halted: %d", cpu->halted);
+    log_info("Interrupts:");
+    log_info("  Enable: 0x%02X", cpu->interrupt.enable);
+    log_info("  Flags: 0x%02X", cpu->interrupt.flags);
+    log_info("Breakpoints:");
+    for (size_t i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
+        if (cpu->breakpoints[i] != FGB_BP_ADDR_NONE) {
+            log_info("  Breakpoint %zu: 0x%04X", i, cpu->breakpoints[i]);
+        }
+    }
+    log_info("Debugging: %d", cpu->debugging);
+    log_info("PPU State: -----------------------");
+    log_info("LY: %d", cpu->ppu->ly);
+    log_info("-------------------------------");
+}
+
+void fgb_cpu_disassemble(const fgb_cpu* cpu, uint16_t addr, int count) {
+    log_info("Disassembling from 0x%04X for %d instructions:", addr, count);
+    int offset = 0;
+    for (int i = 0; i < count; i++) {
+        const uint8_t opcode = fgb_mmu_read_u8(cpu, addr + offset);
+        const fgb_instruction* instruction = fgb_instruction_get(opcode);
+        assert(instruction->opcode == opcode);
+        uint8_t op8 = 0;
+        uint16_t op16 = 0;
+        switch (instruction->operand_size) {
+        case 0:
+            log_info("0x%04X: %s", addr + offset, instruction->fmt_0(instruction));
+            break;
+        case 1:
+            op8 = fgb_mmu_read_u8(cpu, addr + offset + 1);
+            log_info("0x%04X: %s", addr + offset, instruction->fmt_1(instruction, op8));
+            break;
+        case 2:
+            op16 = fgb_mmu_read_u16(cpu, addr + offset + 1);
+            log_info("0x%04X: %s", addr + offset, instruction->fmt_2(instruction, op16));
+            break;
+        default:
+            log_error("Invalid operand size: %d", instruction->operand_size);
+            return;
+        }
+
+        offset += instruction->operand_size + 1; // +1 for the opcode byte
+    }
+}
+
+void fgb_cpu_set_bp(fgb_cpu* cpu, uint16_t addr) {
+    for (size_t i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
+        if (cpu->breakpoints[i] == addr) {
+            return;
+        }
+    }
+
+    for (size_t i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
+        if (cpu->breakpoints[i] == FGB_BP_ADDR_NONE) {
+            cpu->breakpoints[i] = addr;
+            return;
+        }
+    }
+
+    log_error("No free breakpoint slots available");
+}
+
+void fgb_cpu_clear_bp(fgb_cpu* cpu, uint16_t addr) {
+    for (size_t i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
+        if (cpu->breakpoints[i] == addr) {
+            cpu->breakpoints[i] = FGB_BP_ADDR_NONE;
+            return;
+        }
+    }
+
+    log_warn("Breakpoint not found: 0x%04X", addr);
 }
 
 uint8_t fgb_cpu_fetch(fgb_cpu* cpu) {
