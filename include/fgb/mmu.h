@@ -7,9 +7,9 @@
 #include "cart.h"
 #include "timer.h"
 #include "io.h"
+#include "ppu.h"
 
 #define FGB_MEMORY_SIZE 0x10000 // 64KB mmu size
-#define FGB_VRAM_SIZE   0x2000
 #define FGB_WRAM_SIZE   (0x1000 + 0x1000) // 2x 8 KiB Banks
 #define FGB_HRAM_SIZE   0x7F
 
@@ -21,7 +21,6 @@ typedef struct fgb_mmu {
             size_t ext_data_size;
         };
         struct {
-            uint8_t vram[FGB_VRAM_SIZE];
             uint8_t wram[FGB_WRAM_SIZE];
             uint8_t hram[FGB_HRAM_SIZE];
         };
@@ -30,6 +29,7 @@ typedef struct fgb_mmu {
     fgb_cart* cart;
     fgb_timer* timer;
     fgb_io* io;
+    fgb_ppu* ppu;
     struct fgb_cpu* cpu;
 
     void (*reset)(struct fgb_mmu* mmu);

@@ -4,9 +4,11 @@
 #include "mmu.h"
 #include "timer.h"
 #include "io.h"
+#include "ppu.h"
 
 #include <stdbool.h>
 #include <stdint.h>
+
 
 #define FGB_CPU_CLOCK_SPEED     4194304 // 4.194304 MHz
 #define FGB_SCREEN_WIDTH        160
@@ -73,9 +75,8 @@ typedef struct fgb_cpu {
     fgb_mmu mmu;
     fgb_timer timer;
     fgb_io io;
+    fgb_ppu* ppu;
     
-    uint8_t screen[FGB_SCREEN_WIDTH * FGB_SCREEN_HEIGHT * 3]; // 3 bytes per pixel (RGB)
-
     bool ime;
     bool halted;
 
@@ -88,8 +89,8 @@ typedef struct fgb_cpu {
 } fgb_cpu;
 
 
-fgb_cpu* fgb_cpu_create(fgb_cart* cart);
-fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, const fgb_mmu_ops* mmu_ops);
+fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu);
+fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, const fgb_mmu_ops* mmu_ops);
 void fgb_cpu_destroy(fgb_cpu* cpu);
 
 void fgb_cpu_reset(fgb_cpu* cpu);

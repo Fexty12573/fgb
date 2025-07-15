@@ -4,11 +4,13 @@
 #include "cart.h"
 #include "cpu.h"
 #include "mmu.h"
+#include "ppu.h"
 
 
 typedef struct fgb_emu {
     fgb_cpu* cpu;
     fgb_mmu* mmu;
+    fgb_ppu* ppu;
     fgb_cart* cart;
 } fgb_emu;
 

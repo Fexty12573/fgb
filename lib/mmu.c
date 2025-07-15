@@ -31,6 +31,7 @@ void fgb_mmu_init(fgb_mmu* mmu, fgb_cart* cart, fgb_cpu* cpu, const fgb_mmu_ops*
     mmu->cart = cart;
     mmu->timer = &cpu->timer;
     mmu->io = &cpu->io;
+    mmu->ppu = cpu->ppu;
     mmu->cpu = cpu;
 
     if (ops) {
@@ -65,7 +66,7 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
 
     // VRAM (>= 0x8000)
     if (addr < 0xA000) {
-        mmu->vram[addr - 0x8000] = value;
+        fgb_ppu_write_vram(mmu->ppu, addr - 0x8000, value);
         return;
     }
 
@@ -88,9 +89,19 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
         return;
     }
 
+    // OAM (>= 0xFE00)
+    if (addr < 0xFE9F) {
+        fgb_ppu_write_oam(mmu->ppu, addr - 0xFE00, value);
+        return;
+    }
+
     if (addr >= 0xFF04 && addr <= 0xFF07) {
         fgb_timer_write(mmu->timer, addr, value);
         return;
+    }
+
+    if (addr >= 0xFF40 && addr < 0xFF50) {
+        fgb_ppu_write(mmu->ppu, addr, value);
     }
 
     if (addr == 0xFFFF || addr == 0xFF0F) {
@@ -120,7 +131,7 @@ static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
 
     // VRAM (>= 0x8000)
     if (addr < 0xA000) {
-        return mmu->vram[addr - 0x8000];
+        return fgb_ppu_read_vram(mmu->ppu, addr - 0x8000);
     }
 
     // External RAM Bank (>= 0xA000)
@@ -140,8 +151,17 @@ static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
         return mmu->wram[addr - 0xE000];
     }
 
+    // OAM (>= 0xFE00)
+    if (addr < 0xFEA0) {
+        return fgb_ppu_read_oam(mmu->ppu, addr - 0xFE00);
+    }
+
     if (addr >= 0xFF04 && addr <= 0xFF07) {
         return fgb_timer_read(mmu->timer, addr);
+    }
+
+    if (addr >= 0xFF40 && addr < 0xFF50) {
+        return fgb_ppu_read(mmu->ppu, addr);
     }
 
     if (addr == 0xFFFF || addr == 0xFF0F) {
