@@ -18,7 +18,14 @@ fgb_emu* fgb_emu_create(const uint8_t* cart_data, size_t cart_size) {
         return NULL;
     }
 
-    emu->cpu = fgb_cpu_create(emu->cart);
+    emu->ppu = fgb_ppu_create();
+    if (!emu->ppu) {
+        fgb_cart_destroy(emu->cart);
+        fgb_emu_destroy(emu);
+        return NULL;
+    }
+
+    emu->cpu = fgb_cpu_create(emu->cart, emu->ppu);
     if (!emu->cpu) {
         fgb_emu_destroy(emu);
         return NULL;
