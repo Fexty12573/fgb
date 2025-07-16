@@ -6,6 +6,7 @@
 
 #define PPU_VRAM_SIZE   0x2000
 #define PPU_OAM_SIZE    0xA0
+#define PPU_DMA_BYTES   PPU_OAM_SIZE // Number of bytes transferred in a single DMA operation
 #define SCREEN_WIDTH    160
 #define SCREEN_HEIGHT   144
 
@@ -18,7 +19,9 @@
 #define TILES_PER_SCANLINE  (SCREEN_WIDTH / TILE_WIDTH)
 #define TILE_BLOCK_SIZE     (TILES_PER_BLOCK * TILE_SIZE_BYTES) // 128 tiles per block
 
-#define PPU_DMA_BYTES       PPU_OAM_SIZE // Number of bytes transferred in a single DMA operation
+#define PPU_SCANLINE_SPRITES    10 // Maximum number of sprites per scanline
+#define PPU_SPRITE_SIZE_BYTES   4
+#define PPU_OAM_SPRITES         (PPU_OAM_SIZE / PPU_SPRITE_SIZE_BYTES) // Number of sprites in OAM
 
 enum fgb_ppu_mode {
     PPU_MODE_HBLANK = 0,
@@ -40,6 +43,10 @@ typedef struct fgb_ppu {
     uint32_t frame_cycles; // Cycles for the current frame
 
     int pixels_drawn; // Number of pixels drawn in the current scanline
+
+    uint8_t sprite_buffer[PPU_SCANLINE_SPRITES]; // Offsets into OAM for sprites on the current scanline
+    int sprite_count;
+    bool oam_scan_done;
 
     fgb_palette palette;
 

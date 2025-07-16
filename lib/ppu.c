@@ -59,6 +59,7 @@ static uint32_t fgb_ppu_get_color(const fgb_ppu* ppu, uint8_t pixel_index) {
 }
 
 static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count);
+static void fgb_ppu_do_oam_scan(fgb_ppu* ppu);
 
 fgb_ppu* fgb_ppu_create(void) {
     fgb_ppu* ppu = malloc(sizeof(fgb_ppu));
@@ -117,8 +118,10 @@ void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
 
     switch (ppu->stat.mode) {
     case PPU_MODE_OAM_SCAN:
+        fgb_ppu_do_oam_scan(ppu);
         if (ppu->mode_cycles >= OAM_SCAN_CYCLES) {
             ppu->mode_cycles -= OAM_SCAN_CYCLES;
+            ppu->oam_scan_done = false; // Set this for the next scanline
             ppu->stat.mode = PPU_MODE_DRAW;
             ppu->pixels_drawn = 0; // Reset pixel count for the new scanline
         }
@@ -171,8 +174,6 @@ void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
         }
         break;
     }
-
-
 }
 
 void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
@@ -334,4 +335,27 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
     }
 
     ppu->pixels_drawn += count;
+}
+
+void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
+    if (ppu->oam_scan_done) {
+        return;
+    }
+
+    ppu->sprite_count = 0;
+    const int sprite_height = ppu->lcd_control.obj_size ? 16 : 8;
+
+    for (int i = 0; i < PPU_OAM_SPRITES; i++) {
+        fgb_sprite* sprite = (fgb_sprite*)&ppu->oam[i * PPU_SPRITE_SIZE_BYTES];
+        if (sprite->x == 0) continue; // Sprite is not visible
+        if (ppu->ly + 16 < sprite->y || ppu->ly + 16 >= sprite->y + sprite_height) continue; // Sprite is not on this scanline
+
+        ppu->sprite_buffer[ppu->sprite_count++] = i * PPU_SPRITE_SIZE_BYTES;
+        
+        if (ppu->sprite_count >= PPU_SCANLINE_SPRITES) {
+            break;
+        }
+    }
+
+    ppu->oam_scan_done = true;
 }
