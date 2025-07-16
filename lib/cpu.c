@@ -376,6 +376,7 @@ static inline bool fgb_cpu_handle_irq(fgb_cpu* cpu, enum fgb_cpu_interrupt irq) 
 
     // Interrupt is only serviced if IME is set
     if (cpu->ime) {
+        log_info("Handling interrupt: %d", irq);
         fgb_call(cpu, fgb_interrupt_vector[irq]);
         cpu->interrupt.flags &= ~irq; // Clear the interrupt flag
     }

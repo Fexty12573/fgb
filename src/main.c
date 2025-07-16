@@ -186,6 +186,31 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
             log_info("Screen display %s", display_screen ? "enabled" : "disabled");
         }
     }
+
+    // Joypad Input
+    if (action == GLFW_REPEAT) {
+        return; // Don't care about repeated key presses for joypad input
+    }
+
+    if (key >= GLFW_KEY_RIGHT && key <= GLFW_KEY_UP) {
+        fgb_emu_set_button(emu, key - GLFW_KEY_RIGHT + BUTTON_RIGHT, !!action);
+    }
+
+    if (key == GLFW_KEY_SPACE) {
+        fgb_emu_set_button(emu, BUTTON_A, !!action);
+    }
+
+    if (key == GLFW_KEY_LEFT_SHIFT) {
+        fgb_emu_set_button(emu, BUTTON_B, !!action);
+    }
+
+    if (key == GLFW_KEY_ENTER) {
+        fgb_emu_set_button(emu, BUTTON_START, !!action);
+    }
+
+    if (key == GLFW_KEY_BACKSPACE) {
+        fgb_emu_set_button(emu, BUTTON_SELECT, !!action);
+    }
 }
 
 static void gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {

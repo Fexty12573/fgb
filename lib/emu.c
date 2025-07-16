@@ -54,3 +54,11 @@ void fgb_emu_set_log_level(fgb_emu* emu, enum ulog_level level) {
 
     ulog_set_level(level);
 }
+
+void fgb_emu_press_button(fgb_emu* emu, enum fgb_button button) {
+    fgb_io_press_button(&emu->cpu->io, button);
+}
+
+void fgb_emu_release_button(fgb_emu* emu, enum fgb_button button) {
+    fgb_io_release_button(&emu->cpu->io, button);
+}
