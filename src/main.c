@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <threads.h>
 
 #include <fgb/emu.h>
 #include <fgb/cpu.h>
@@ -19,9 +20,19 @@ size_t file_size(FILE* f) {
     return size;
 }
 
+struct {
+    fgb_emu* emu;
+    thrd_t emu_thread;
+    bool running;
+    bool display_screen;
+    int block_to_display;
+    double render_framerate;
+    double emu_framerate;
+} g_app = { NULL, { 0 }, true, true, 0, 0.0, 0.0 };
+
 static fgb_emu* emu_init(const char* rom_path) {
     FILE* f;
-    errno_t err = fopen_s(&f, rom_path, "rb");
+    const errno_t err = fopen_s(&f, rom_path, "rb");
     if (err) {
         printf("Failed to open file %s\n", rom_path);
         exit(1);
@@ -52,7 +63,7 @@ static GLFWwindow* window_init(void) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 
-    GLFWwindow* window = glfwCreateWindow(SCREEN_WIDTH * 2, SCREEN_HEIGHT * 2, "fgb", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(SCREEN_WIDTH * 3, SCREEN_HEIGHT * 3, "fgb", NULL, NULL);
     if (!window) {
         printf("Failed to create window\n");
         glfwTerminate();
@@ -131,15 +142,12 @@ static uint32_t shader_init(void) {
     return shader_program;
 }
 
-int block_to_display = 0;
-fgb_emu* emu = NULL;
-double framerate = 0.0;
-bool display_screen = true;
-
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
     }
+
+    fgb_emu* emu = g_app.emu;
     if (action == GLFW_PRESS) {
         if (key == GLFW_KEY_T) {
             emu->cpu->trace = !emu->cpu->trace;
@@ -174,16 +182,13 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
             fgb_cpu_clear_bp(emu->cpu, emu->cpu->regs.pc);
             log_info("Breakpoint cleared at 0x%04X", emu->cpu->regs.pc);
         }
-        if (key == GLFW_KEY_F) {
-            log_info("Framerate: %.2f FPS", framerate);
-        }
         if (key == GLFW_KEY_B) {
-            block_to_display = (block_to_display + 1) % TILE_BLOCK_COUNT;
-            log_info("Displaying block %d", block_to_display);
+            g_app.block_to_display = (g_app.block_to_display + 1) % TILE_BLOCK_COUNT;
+            log_info("Displaying block %d", g_app.block_to_display);
         }
         if (key == GLFW_KEY_V) {
-            display_screen = !display_screen;
-            log_info("Screen display %s", display_screen ? "enabled" : "disabled");
+            g_app.display_screen = !g_app.display_screen;
+            log_info("Screen display %s", g_app.display_screen ? "enabled" : "disabled");
         }
     }
 
@@ -216,21 +221,52 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 static void gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
     switch (severity) {
     case GL_DEBUG_SEVERITY_HIGH:
-        printf("OpenGL Error: %s (Source: %d, Type: %d, ID: %d)", message, source, type, id);
+        printf("OpenGL Error: %s (Source: %u, Type: %u, ID: %u)", message, source, type, id);
         break;
 
     case GL_DEBUG_SEVERITY_MEDIUM:
-        printf("OpenGL Warning: %s (Source: %d, Type: %d, ID: %d)", message, source, type, id);
+        printf("OpenGL Warning: %s (Source: %u, Type: %u, ID: %u)", message, source, type, id);
         break;
 
     case GL_DEBUG_SEVERITY_LOW:
-        printf("OpenGL Info: %s (Source: %d, Type: %d, ID: %d)", message, source, type, id);
+        printf("OpenGL Info: %s (Source: %u, Type: %u, ID: %u)", message, source, type, id);
         break;
 
     case GL_DEBUG_SEVERITY_NOTIFICATION:
-        printf("OpenGL Notification: %s (Source: %d, Type: %d, ID: %d)", message, source, type, id);
+        printf("OpenGL Notification: %s (Source: %u, Type: %u, ID: %u)", message, source, type, id);
         break;
     }
+}
+
+static int emu_run(void* arg) {
+    const fgb_emu* emu = arg;
+
+    const double frametime = 1.0 / FGB_SCREEN_REFRESH_RATE;
+    struct timespec ts = { 0 };
+    double error = 0.0;
+    
+    while (g_app.running) {
+        const double start_time = glfwGetTime();
+
+        fgb_cpu_step(emu->cpu);
+
+        const double end_time = glfwGetTime();
+        const double elapsed = end_time - start_time;
+        const double to_sleep = frametime - elapsed + error;
+
+        if (to_sleep > 0.0) {
+            ts.tv_sec = (time_t)to_sleep;
+            ts.tv_nsec = (long)((to_sleep - (time_t)to_sleep) * 1e9);
+            thrd_sleep(&ts, NULL);
+        }
+
+        const double actual_frametime = glfwGetTime() - start_time;
+        g_app.emu_framerate = 1.0 / actual_frametime;
+
+        error = frametime - actual_frametime;
+    }
+
+    return 0;
 }
 
 int main(int argc, char** argv) {
@@ -253,16 +289,16 @@ int main(int argc, char** argv) {
         return 1;
     }
     
-    emu = emu_init(argv[1]);
-    if (!emu) {
+    g_app.emu = emu_init(argv[1]);
+    if (!g_app.emu) {
         printf("Could not create emulator. Exiting\n");
         return 1;
     }
     
     ulog_set_quiet(false);
     ulog_set_level(LOG_DEBUG);
-    fgb_emu_set_log_level(emu, LOG_DEBUG);
-    emu->cpu->trace = false;
+    fgb_emu_set_log_level(g_app.emu, LOG_DEBUG);
+    g_app.emu->cpu->trace = false;
 
     glDebugMessageCallback(gl_debug_callback, NULL);
 
@@ -278,7 +314,7 @@ int main(int argc, char** argv) {
     uint32_t va, vb, ib;
     fgb_create_quad(&va, &vb, &ib);
 
-    const fgb_palette tile_pal = {
+    const fgb_palette bg_pal = {
         .colors = {
             0xFF000000, // Color 0: Black
             0xFF606060, // Color 1: Dark Gray
@@ -296,34 +332,46 @@ int main(int argc, char** argv) {
         }
     };
 
+    g_app.emu->ppu->bg_palette = bg_pal;
+    g_app.emu->ppu->obj_palette = obj_pal;
+
     glfwSetKeyCallback(window, key_callback);
 
+    thrd_create(&g_app.emu_thread, emu_run, g_app.emu);
+
     double last_time = glfwGetTime();
+    double last_title_update = last_time;
 
     while (!glfwWindowShouldClose(window)) {
-        double current_time = glfwGetTime();
-        double delta_time = current_time - last_time;
+        const double current_time = glfwGetTime();
+        const double delta_time = current_time - last_time;
         last_time = current_time;
 
-        framerate = 1.0 / delta_time;
+        if (current_time - last_title_update >= 1.0) {
+            char title[256];
+            snprintf(title, sizeof(title), "fgb - FPS: %.2f, Emu FPS: %.2f", g_app.render_framerate, g_app.emu_framerate);
+            glfwSetWindowTitle(window, title);
+            last_title_update = current_time;
+        }
+
+        g_app.render_framerate = 1.0 / delta_time;
 
         glfwPollEvents();
 
-        fgb_cpu_step(emu->cpu);
-
-        if (display_screen) {
-            fgb_upload_screen_texture(screen_texture, emu->ppu);
+        if (g_app.display_screen) {
+            fgb_upload_screen_texture(screen_texture, g_app.emu->ppu);
         } else {
-            fgb_upload_tile_block_texture(block_textures[block_to_display], tiles_per_row, emu->ppu, block_to_display, &tile_pal);
+            fgb_upload_tile_block_texture(block_textures[g_app.block_to_display], tiles_per_row, g_app.emu->ppu, g_app.block_to_display, &bg_pal);
         }
 
+        // Render at monitor refresh rate (e.g., 165Hz)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(shader);
         glBindVertexArray(va);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, display_screen ? screen_texture : block_textures[block_to_display]);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)0);
+        glBindTexture(GL_TEXTURE_2D, g_app.display_screen ? screen_texture : block_textures[g_app.block_to_display]);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL);
 
         glfwSwapBuffers(window);
     }
