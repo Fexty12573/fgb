@@ -3,12 +3,13 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <threads.h>
 
-#define PPU_VRAM_SIZE   0x2000
-#define PPU_OAM_SIZE    0xA0
-#define PPU_DMA_BYTES   PPU_OAM_SIZE // Number of bytes transferred in a single DMA operation
-#define SCREEN_WIDTH    160
-#define SCREEN_HEIGHT   144
+#define PPU_VRAM_SIZE 0x2000
+#define PPU_OAM_SIZE  0xA0
+#define PPU_DMA_BYTES PPU_OAM_SIZE // Number of bytes transferred in a single DMA operation
+#define SCREEN_WIDTH  160
+#define SCREEN_HEIGHT 144
 
 #define TILE_WIDTH          8
 #define TILE_HEIGHT         8
@@ -19,6 +20,7 @@
 #define TILES_PER_SCANLINE  (SCREEN_WIDTH / TILE_WIDTH)
 #define TILE_BLOCK_SIZE     (TILES_PER_BLOCK * TILE_SIZE_BYTES) // 128 tiles per block
 
+#define PPU_FRAMEBUFFER_COUNT   2 // Double buffering
 #define PPU_SCANLINE_SPRITES    10 // Maximum number of sprites per scanline
 #define PPU_SPRITE_SIZE_BYTES   4
 #define PPU_OAM_SPRITES         (PPU_OAM_SIZE / PPU_SPRITE_SIZE_BYTES) // Number of sprites in OAM
@@ -40,7 +42,10 @@ typedef struct fgb_palette {
 typedef struct fgb_ppu {
     uint8_t vram[PPU_VRAM_SIZE];
     uint8_t oam[PPU_OAM_SIZE];
-    uint32_t screen[SCREEN_WIDTH * SCREEN_HEIGHT];
+    uint32_t framebuffers[PPU_FRAMEBUFFER_COUNT][SCREEN_WIDTH * SCREEN_HEIGHT];
+
+    int back_buffer;
+    mtx_t buffer_mutex;
 
     uint32_t mode_cycles; // Cycles for the current mode
     uint32_t frame_cycles; // Cycles for the current frame
@@ -131,6 +136,10 @@ typedef struct fgb_ppu {
 fgb_ppu* fgb_ppu_create(void);
 void fgb_ppu_destroy(fgb_ppu* ppu);
 void fgb_ppu_set_cpu(fgb_ppu* ppu, struct fgb_cpu* cpu);
+
+const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu);
+void fgb_ppu_lock_buffer(fgb_ppu* ppu);
+void fgb_ppu_unlock_buffer(fgb_ppu* ppu);
 
 bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles);
 

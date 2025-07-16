@@ -84,6 +84,8 @@ fgb_ppu* fgb_ppu_create(void) {
 
     memset(ppu, 0, sizeof(fgb_ppu));
 
+    mtx_init(&ppu->buffer_mutex, mtx_plain);
+
     ppu->bg_palette.colors[0] = 0xFFFFFFFF; // Color 0: White
     ppu->bg_palette.colors[1] = 0xFFB0B0B0; // Color 1: Light Gray
     ppu->bg_palette.colors[2] = 0xFF606060; // Color 2: Dark Gray
@@ -104,6 +106,22 @@ void fgb_ppu_destroy(fgb_ppu* ppu) {
 
 void fgb_ppu_set_cpu(fgb_ppu* ppu, fgb_cpu* cpu) {
     ppu->cpu = cpu;
+}
+
+const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu) {
+    return ppu->framebuffers[(ppu->back_buffer + PPU_FRAMEBUFFER_COUNT - 1) % PPU_FRAMEBUFFER_COUNT];
+}
+
+void fgb_ppu_lock_buffer(fgb_ppu* ppu) {
+    if (mtx_lock(&ppu->buffer_mutex) != thrd_success) {
+        log_error("PPU: Failed to lock buffer mutex");
+    }
+}
+
+void fgb_ppu_unlock_buffer(fgb_ppu* ppu) {
+    if (mtx_unlock(&ppu->buffer_mutex) != thrd_success) {
+        log_error("PPU: Failed to unlock buffer mutex");
+    }
 }
 
 bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
@@ -192,6 +210,13 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
                 ppu->frame_cycles = 0; // Reset frame cycles
                 ppu->frames_rendered++;
 
+                fgb_ppu_lock_buffer(ppu);
+
+                // Switch to the next framebuffer at the end of VBLANK
+                ppu->back_buffer = (ppu->back_buffer + 1) % PPU_FRAMEBUFFER_COUNT;
+
+                fgb_ppu_unlock_buffer(ppu);
+
                 return true;
             }
         }
@@ -235,6 +260,7 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
             log_warn("PPU: DMA transfer already active, ignoring new request");
             return;
         }
+        log_info("PPU: Starting DMA transfer during mode %d", ppu->stat.mode);
         ppu->dma_active = true;
         ppu->dma_addr = value << 8;
         ppu->dma_cycles = 0;
@@ -342,6 +368,8 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
     // Make sure we don't draw more pixels than the screen width
     count = min(count, SCREEN_WIDTH - ppu->pixels_drawn);
 
+    uint32_t* framebuffer = ppu->framebuffers[ppu->back_buffer];
+
     for (int i = 0; i < count; i++) {
         const int x = ppu->pixels_drawn + i;
         const int y = ppu->ly;
@@ -396,18 +424,18 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
 
         if (!sprite) {
             // No sprite at this position, just draw the background pixel
-            ppu->screen[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);
+            framebuffer[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);
             continue;
         }
 
         // Sprite color 0 is transparent
         // Sprite priority 1 means it is behind bg colors 1, 2 and 3
         if (sprite_pixel == 0 || (sprite->priority == 1 && bg_pixel != 0)) {
-            ppu->screen[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);
+            framebuffer[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);
             continue;
         }
 
-        ppu->screen[screen_index] = fgb_ppu_get_obj_color(ppu, sprite_pixel, sprite->palette);
+        framebuffer[screen_index] = fgb_ppu_get_obj_color(ppu, sprite_pixel, sprite->palette);
     }
 
     ppu->pixels_drawn += count;
@@ -416,6 +444,11 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
 void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
     if (ppu->oam_scan_done) {
         return;
+    }
+
+    if (ppu->dma_active) {
+        log_warn("PPU: OAM scan requested while DMA is active, waiting for DMA to complete");
+        return; // Wait for DMA to finish
     }
 
     ppu->sprite_count = 0;

@@ -316,19 +316,19 @@ int main(int argc, char** argv) {
 
     const fgb_palette bg_pal = {
         .colors = {
-            0xFF000000, // Color 0: Black
-            0xFF606060, // Color 1: Dark Gray
+            0xFFFFFFFF, // Color 3: White
             0xFFB0B0B0, // Color 2: Light Gray
-            0xFFFFFFFF  // Color 3: White
+            0xFF606060, // Color 1: Dark Gray
+            0xFF000000, // Color 0: Black
         }
     };
 
     const fgb_palette obj_pal = {
         .colors = {
-            0x00000000, // Color 0: Transparent
-            0xFF000000, // Color 1: Black
-            0xFF808080, // Color 2: Light Gray
-            0xFFFFFFFF  // Color 3: White
+            0xFFFFFFFF, // Color 3: White
+            0xFFB0B0B0, // Color 2: Light Gray
+            0xFF606060, // Color 1: Dark Gray
+            0xFF000000, // Color 0: Black
         }
     };
 
