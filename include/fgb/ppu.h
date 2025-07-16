@@ -22,6 +22,9 @@
 #define PPU_SCANLINE_SPRITES    10 // Maximum number of sprites per scanline
 #define PPU_SPRITE_SIZE_BYTES   4
 #define PPU_OAM_SPRITES         (PPU_OAM_SIZE / PPU_SPRITE_SIZE_BYTES) // Number of sprites in OAM
+#define PPU_SPRITE_W            TILE_WIDTH
+#define PPU_SPRITE_H            TILE_HEIGHT
+#define PPU_SPRITE_H16          (2 * TILE_HEIGHT)
 
 enum fgb_ppu_mode {
     PPU_MODE_HBLANK = 0,
@@ -48,7 +51,8 @@ typedef struct fgb_ppu {
     int sprite_count;
     bool oam_scan_done;
 
-    fgb_palette palette;
+    fgb_palette bg_palette;
+    fgb_palette obj_palette;
 
     union {
         uint8_t value;
@@ -106,12 +110,12 @@ typedef struct fgb_ppu {
     union {
         uint8_t value;
         struct {
-            uint8_t : 2; // always transparent
+            uint8_t col0 : 2; // always transparent
             uint8_t col1 : 2;
             uint8_t col2 : 2;
             uint8_t col3 : 2;
         };
-    } obp0, obp1;
+    } obp[2];
 
     bool dma_active; // DMA transfer is active
     uint16_t dma_addr; // Address for DMA transfer

@@ -30,7 +30,7 @@ typedef struct fgb_sprite {
         uint8_t flags;
         struct {
             uint8_t : 3; // Palette in CGB mode
-            uint8_t bank : 1;
+            uint8_t : 1; // Bank in CGB mode
             uint8_t palette : 1;
             uint8_t x_flip : 1;
             uint8_t y_flip : 1;
@@ -49,13 +49,27 @@ static uint8_t fgb_ppu_get_pixel(const fgb_ppu* ppu, const fgb_tile* tile, uint8
     return ((msb >> (7 - x)) & 1) << 1 | ((lsb >> (7 - x)) & 1);
 }
 
-static const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_map, int tile_block, int x, int y) {
-    const int tile_id = ppu->vram[TILE_OFFSET(tile_map, x, y)];
-    return (fgb_tile*)&ppu->vram[TILE_DATA_OFFSET(tile_block, tile_id)];
+static int fgb_ppu_get_tile_id(const fgb_ppu* ppu, int tile_map, int x, int y) {
+    return ppu->vram[TILE_OFFSET(tile_map, x, y)];
 }
 
-static uint32_t fgb_ppu_get_color(const fgb_ppu* ppu, uint8_t pixel_index) {
-    return ppu->palette.colors[(ppu->bgp.value >> (pixel_index * 2)) & 0x3];
+static const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_sprite) {
+    if (is_sprite || ppu->lcd_control.bg_wnd_tiles == 1) {
+        // Use tile blocks 0 and 1
+        return (fgb_tile*)&ppu->vram[TILE_DATA_OFFSET(0, tile_id)];
+    }
+
+    int tile_block = tile_id > 127 ? 2 : 1; // Tile ID > 127 uses block 2, otherwise block 1
+    return (fgb_tile*)&ppu->vram[TILE_DATA_OFFSET(tile_block, tile_id % 128)];
+}
+
+static uint32_t fgb_ppu_get_bg_color(const fgb_ppu* ppu, uint8_t pixel_index) {
+    return ppu->bg_palette.colors[(ppu->bgp.value >> (pixel_index * 2)) & 0x3];
+}
+
+static uint32_t fgb_ppu_get_obj_color(const fgb_ppu* ppu, uint8_t pixel_index, int palette) {
+    int pal_index = (ppu->obp[palette].value >> (pixel_index * 2)) & 0x3;
+    return ppu->obj_palette.colors[pal_index];
 }
 
 static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count);
@@ -70,10 +84,15 @@ fgb_ppu* fgb_ppu_create(void) {
 
     memset(ppu, 0, sizeof(fgb_ppu));
 
-    ppu->palette.colors[0] = 0xFFFFFFFF; // Color 0: White
-    ppu->palette.colors[1] = 0xFFB0B0B0; // Color 1: Light Gray
-    ppu->palette.colors[2] = 0xFF606060; // Color 2: Dark Gray
-    ppu->palette.colors[3] = 0xFF000000; // Color 3: Black
+    ppu->bg_palette.colors[0] = 0xFFFFFFFF; // Color 0: White
+    ppu->bg_palette.colors[1] = 0xFFB0B0B0; // Color 1: Light Gray
+    ppu->bg_palette.colors[2] = 0xFF606060; // Color 2: Dark Gray
+    ppu->bg_palette.colors[3] = 0xFF000000; // Color 3: Black
+
+    ppu->obj_palette.colors[0] = 0xFFFFFFFF; // Color 0: White
+    ppu->obj_palette.colors[1] = 0xFFB0B0B0; // Color 1: Light Gray
+    ppu->obj_palette.colors[2] = 0xFF606060; // Color 2: Dark Gray
+    ppu->obj_palette.colors[3] = 0xFF000000; // Color 3: Black
 
     return ppu;
 }
@@ -105,7 +124,7 @@ void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
 
         for (int i = 0; i < bytes_to_transfer; i++) {
             const uint16_t src = ppu->dma_addr + ppu->dma_bytes + i;
-            const uint16_t dst = ppu->dma_bytes % PPU_OAM_SIZE;
+            const uint16_t dst = (ppu->dma_bytes + i) % PPU_OAM_SIZE;
             ppu->oam[dst] = mmu->read_u8(mmu, src);
         }
 
@@ -202,6 +221,10 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
         break;
 
     case 0xFF46:
+        if (ppu->dma_active) {
+            log_warn("PPU: DMA transfer already active, ignoring new request");
+            return;
+        }
         ppu->dma_active = true;
         ppu->dma_addr = value << 8;
         ppu->dma_cycles = 0;
@@ -213,11 +236,11 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
         break;
 
     case 0xFF48:
-        ppu->obp0.value = value;
+        ppu->obp[0].value = value;
         break;
 
     case 0xFF49:
-        ppu->obp1.value = value;
+        ppu->obp[1].value = value;
         break;
 
     case 0xFF4A:
@@ -258,10 +281,10 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
         return ppu->bgp.value;
 
     case 0xFF48:
-        return ppu->obp0.value;
+        return ppu->obp[0].value;
 
     case 0xFF49:
-        return ppu->obp1.value;
+        return ppu->obp[1].value;
 
     case 0xFF4A:
         return ppu->window_pos.y;
@@ -320,8 +343,36 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
         const int tile_x = x / TILE_WIDTH;
         const int tile_y = y / TILE_HEIGHT;
 
+        // Check if there is a sprite at this position
+        fgb_sprite* sprite = NULL;
+        uint8_t sprite_pixel = 0;
+        if (ppu->lcd_control.obj_enable) {
+            for (int i = 0; i < ppu->sprite_count; i++) {
+                fgb_sprite* s = (fgb_sprite*)&ppu->oam[ppu->sprite_buffer[i]];
+                const int sprite_window_x = s->x - 8; // Adjust for sprite X position
+                const int sprite_window_y = s->y - 16;
+                if (x >= sprite_window_x && x < sprite_window_x + PPU_SPRITE_W) { // Check if the pixel is within the sprite's X bounds
+                    sprite = s;
+
+                    // If obj_size == 1 (8x16 sprites), the lsb of the tile ID is ignored
+                    const int tile_id = ppu->lcd_control.obj_size ? s->tile & 0xFE : s->tile;
+                    const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, tile_id, true);
+                    if (!tile) {
+                        log_error("PPU: Failed to get sprite tile data for tile ID %d", tile_id);
+                        continue;
+                    }
+
+                    const int pixel_x = (x - sprite_window_x) % TILE_WIDTH;
+                    const int pixel_y = (y - sprite_window_y) % TILE_HEIGHT;
+                    sprite_pixel = fgb_ppu_get_pixel(ppu, tile, pixel_x, pixel_y);
+                    break;
+                }
+            }
+        }
+
         // Get the background tile data
-        const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->lcd_control.bg_tile_map, 0, tile_x, tile_y);
+        const int tile_id = fgb_ppu_get_tile_id(ppu, ppu->lcd_control.bg_tile_map, tile_x, tile_y);
+        const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, tile_id, false);
         if (!tile) {
             log_error("PPU: Failed to get tile data for (%d, %d)", tile_x, tile_y);
             continue;
@@ -330,8 +381,23 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
         // Get the pixel from the tile
         const int pixel_x = x % TILE_WIDTH;
         const int pixel_y = y % TILE_HEIGHT;
-        uint8_t pixel = fgb_ppu_get_pixel(ppu, tile, pixel_x, pixel_y);
-        ppu->screen[y * SCREEN_WIDTH + x] = fgb_ppu_get_color(ppu, pixel);
+        uint8_t bg_pixel = fgb_ppu_get_pixel(ppu, tile, pixel_x, pixel_y);
+        const int screen_index = y * SCREEN_WIDTH + x;
+
+        if (!sprite) {
+            // No sprite at this position, just draw the background pixel
+            ppu->screen[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);
+            continue;
+        }
+
+        // Sprite color 0 is transparent
+        // Sprite priority 1 means it is behind bg colors 1, 2 and 3
+        if (sprite_pixel == 0 || (sprite->priority == 1 && bg_pixel != 0)) {
+            ppu->screen[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);
+            continue;
+        }
+
+        ppu->screen[screen_index] = fgb_ppu_get_obj_color(ppu, sprite_pixel, sprite->palette);
     }
 
     ppu->pixels_drawn += count;
@@ -343,12 +409,12 @@ void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
     }
 
     ppu->sprite_count = 0;
-    const int sprite_height = ppu->lcd_control.obj_size ? 16 : 8;
+    const int sprite_height = ppu->lcd_control.obj_size ? PPU_SPRITE_H16 : PPU_SPRITE_H;
 
     for (int i = 0; i < PPU_OAM_SPRITES; i++) {
         fgb_sprite* sprite = (fgb_sprite*)&ppu->oam[i * PPU_SPRITE_SIZE_BYTES];
         if (sprite->x == 0) continue; // Sprite is not visible
-        if (ppu->ly + 16 < sprite->y || ppu->ly + 16 >= sprite->y + sprite_height) continue; // Sprite is not on this scanline
+        if (ppu->ly < sprite->y - 16 || ppu->ly >= sprite->y - 16 + sprite_height) continue; // Sprite is not on this scanline
 
         ppu->sprite_buffer[ppu->sprite_count++] = i * PPU_SPRITE_SIZE_BYTES;
         
