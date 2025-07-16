@@ -35,7 +35,7 @@ void fgb_io_write(fgb_io* io, uint16_t addr, uint8_t value) {
         break;
     }
 
-    log_warn("Unknown address for IO write: 0x%04X", addr);
+    log_trace("Unknown address for IO write: 0x%04X", addr);
 }
 
 uint8_t fgb_io_read(const fgb_io* io, uint16_t addr) {
@@ -53,7 +53,7 @@ uint8_t fgb_io_read(const fgb_io* io, uint16_t addr) {
         break;
     }
 
-    log_warn("Unknown address for IO write: 0x%04X", addr);
+    log_trace("Unknown address for IO read: 0x%04X", addr);
     return 0xAA;
 }
 

@@ -94,6 +94,26 @@ void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
 
     ppu->mode_cycles += cycles;
     ppu->frame_cycles += cycles;
+    ppu->dma_cycles += cycles;
+
+    if (ppu->dma_active && ppu->dma_cycles >= 4) {
+        int bytes_to_transfer = min(ppu->dma_cycles / 4, PPU_DMA_BYTES - ppu->dma_bytes);
+        ppu->dma_cycles -= bytes_to_transfer * 4;
+
+        fgb_mmu* mmu = &ppu->cpu->mmu;
+
+        for (int i = 0; i < bytes_to_transfer; i++) {
+            const uint16_t src = ppu->dma_addr + ppu->dma_bytes + i;
+            const uint16_t dst = ppu->dma_bytes % PPU_OAM_SIZE;
+            ppu->oam[dst] = mmu->read_u8(mmu, src);
+        }
+
+        ppu->dma_bytes += bytes_to_transfer;
+
+        if (ppu->dma_bytes >= PPU_DMA_BYTES) {
+            ppu->dma_active = false; // DMA transfer complete
+        }
+    }
 
     switch (ppu->stat.mode) {
     case PPU_MODE_OAM_SCAN:
@@ -178,6 +198,13 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
 
     case 0xFF45:
         ppu->lyc = value;
+        break;
+
+    case 0xFF46:
+        ppu->dma_active = true;
+        ppu->dma_addr = value << 8;
+        ppu->dma_cycles = 0;
+        ppu->dma_bytes = 0;
         break;
 
     case 0xFF47:

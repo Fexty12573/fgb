@@ -2,6 +2,7 @@
 #define PPU_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define PPU_VRAM_SIZE   0x2000
 #define PPU_OAM_SIZE    0xA0
@@ -16,6 +17,8 @@
 #define TILE_BLOCK_COUNT    3 // Number of tile blocks
 #define TILES_PER_SCANLINE  (SCREEN_WIDTH / TILE_WIDTH)
 #define TILE_BLOCK_SIZE     (TILES_PER_BLOCK * TILE_SIZE_BYTES) // 128 tiles per block
+
+#define PPU_DMA_BYTES       PPU_OAM_SIZE // Number of bytes transferred in a single DMA operation
 
 enum fgb_ppu_mode {
     PPU_MODE_HBLANK = 0,
@@ -102,6 +105,11 @@ typedef struct fgb_ppu {
             uint8_t col3 : 2;
         };
     } obp0, obp1;
+
+    bool dma_active; // DMA transfer is active
+    uint16_t dma_addr; // Address for DMA transfer
+    int dma_bytes; // Number of bytes transferred in the current DMA operation
+    int dma_cycles;
 
     struct fgb_cpu* cpu;
 } fgb_ppu;
