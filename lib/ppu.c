@@ -6,11 +6,21 @@
 
 #include <ulog.h>
 
-#define FGB_PPU_OAM_SCAN_CYCLES (80)  // T-cycles
-#define FGB_PPU_SCANLINE_CYCLES (172) // T-cycles
-#define FGB_PPU_HBLANK_CYCLES   (204) // T-cycles
-#define FGB_PPU_VBLANK_CYCLES   (456) // T-cycles
+#define OAM_SCAN_CYCLES             (80)  // T-cycles
+#define SCANLINE_CYCLES             (172) // T-cycles
+#define HBLANK_CYCLES               (204) // T-cycles
+#define VBLANK_CYCLES               (456) // T-cycles
 
+#define TILE_MAP_BASE               (0x9800 - 0x8000)
+#define TILE_MAP_WIDTH              32
+#define TILE_MAP_HEIGHT             32
+#define TILE_MAP_SIZE               (TILE_MAP_WIDTH * TILE_MAP_HEIGHT * 1)
+#define TILE_MAP_OFFSET(MAP)        (TILE_MAP_BASE + (MAP) * TILE_MAP_SIZE)
+#define TILE_OFFSET(MAP, X, Y)      (TILE_MAP_OFFSET(MAP) + (Y) * TILE_MAP_WIDTH + (X))
+
+#define TILE_DATA_BLOCK_BASE             (0x8000 - 0x8000)
+#define TILE_DATA_BLOCK_OFFSET(BLOCK)    (TILE_DATA_BLOCK_BASE + (BLOCK) * TILE_BLOCK_SIZE)
+#define TILE_DATA_OFFSET(BLOCK, TILE)    (TILE_DATA_BLOCK_OFFSET(BLOCK) + (TILE) * TILE_SIZE_BYTES)
 
 typedef struct fgb_sprite {
     uint8_t y;
@@ -39,6 +49,17 @@ static uint8_t fgb_ppu_get_pixel(const fgb_ppu* ppu, const fgb_tile* tile, uint8
     return ((msb >> (7 - x)) & 1) << 1 | ((lsb >> (7 - x)) & 1);
 }
 
+static const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_map, int tile_block, int x, int y) {
+    const int tile_id = ppu->vram[TILE_OFFSET(tile_map, x, y)];
+    return (fgb_tile*)&ppu->vram[TILE_DATA_OFFSET(tile_block, tile_id)];
+}
+
+static uint32_t fgb_ppu_get_color(const fgb_ppu* ppu, uint8_t pixel_index) {
+    return ppu->palette.colors[(ppu->bgp.value >> (pixel_index * 2)) & 0x3];
+}
+
+static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count);
+
 fgb_ppu* fgb_ppu_create(void) {
     fgb_ppu* ppu = malloc(sizeof(fgb_ppu));
     if (!ppu) {
@@ -47,6 +68,11 @@ fgb_ppu* fgb_ppu_create(void) {
     }
 
     memset(ppu, 0, sizeof(fgb_ppu));
+
+    ppu->palette.colors[0] = 0xFFFFFFFF; // Color 0: White
+    ppu->palette.colors[1] = 0xFFB0B0B0; // Color 1: Light Gray
+    ppu->palette.colors[2] = 0xFF606060; // Color 2: Dark Gray
+    ppu->palette.colors[3] = 0xFF000000; // Color 3: Black
 
     return ppu;
 }
@@ -71,18 +97,32 @@ void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
 
     switch (ppu->stat.mode) {
     case PPU_MODE_OAM_SCAN:
-        if (ppu->mode_cycles >= FGB_PPU_OAM_SCAN_CYCLES) {
-            ppu->mode_cycles -= FGB_PPU_OAM_SCAN_CYCLES;
+        if (ppu->mode_cycles >= OAM_SCAN_CYCLES) {
+            ppu->mode_cycles -= OAM_SCAN_CYCLES;
             ppu->stat.mode = PPU_MODE_DRAW;
+            ppu->pixels_drawn = 0; // Reset pixel count for the new scanline
         }
         break;
 
     case PPU_MODE_DRAW:
-        if (ppu->mode_cycles >= FGB_PPU_SCANLINE_CYCLES) {
+        // We draw `cycles` pixels for each call to fgb_ppu_tick
+        fgb_ppu_render_pixels(ppu, cycles);
+
+        if (ppu->mode_cycles >= SCANLINE_CYCLES) {
+            ppu->mode_cycles -= SCANLINE_CYCLES;
             ppu->ly++;
+
+            if (ppu->lyc == ppu->ly) {
+                ppu->stat.lyc_eq_ly = 1;
+                ppu->stat.lyc_int = 1;
+            } else {
+                ppu->stat.lyc_eq_ly = 0;
+            }
+
             if (ppu->ly == 144) {
                 ppu->stat.mode = PPU_MODE_VBLANK;
                 ppu->stat.mode_1_int = 1; // Set mode 1 interrupt flag
+                fgb_cpu_request_interrupt(ppu->cpu, IRQ_VBLANK);
             }
             else {
                 ppu->stat.mode = PPU_MODE_HBLANK;
@@ -92,16 +132,16 @@ void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
         break;
 
     case PPU_MODE_HBLANK:
-        if (ppu->mode_cycles >= FGB_PPU_HBLANK_CYCLES) {
-            ppu->mode_cycles -= FGB_PPU_HBLANK_CYCLES;
+        if (ppu->mode_cycles >= HBLANK_CYCLES) {
+            ppu->mode_cycles -= HBLANK_CYCLES;
             ppu->stat.mode = PPU_MODE_OAM_SCAN;
             ppu->stat.mode_2_int = 1; // Set mode 2 interrupt flag
         }
         break;
 
     case PPU_MODE_VBLANK:
-        if (ppu->mode_cycles >= FGB_PPU_VBLANK_CYCLES) {
-            ppu->mode_cycles -= FGB_PPU_VBLANK_CYCLES;
+        if (ppu->mode_cycles >= VBLANK_CYCLES) {
+            ppu->mode_cycles -= VBLANK_CYCLES;
             ppu->ly++;
             if (ppu->ly >= 154) {
                 ppu->ly = 0;
@@ -140,6 +180,18 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
         ppu->lyc = value;
         break;
 
+    case 0xFF47:
+        ppu->bgp.value = value;
+        break;
+
+    case 0xFF48:
+        ppu->obp0.value = value;
+        break;
+
+    case 0xFF49:
+        ppu->obp1.value = value;
+        break;
+
     case 0xFF4A:
         ppu->window_pos.y = value;
         break;
@@ -174,6 +226,15 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
     case 0xFF45:
         return ppu->lyc;
 
+    case 0xFF47:
+        return ppu->bgp.value;
+
+    case 0xFF48:
+        return ppu->obp0.value;
+
+    case 0xFF49:
+        return ppu->obp1.value;
+
     case 0xFF4A:
         return ppu->window_pos.y;
 
@@ -191,19 +252,19 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
 // TODO: Add checks for if the memory is even accessible
 void fgb_ppu_write_vram(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
     // VRAM is only accessible during VBLANK and HBLANK
-    if (ppu->stat.mode != PPU_MODE_VBLANK && ppu->stat.mode != PPU_MODE_HBLANK) {
-        log_warn("PPU: Attempt to write to VRAM outside of VBLANK or OAM scan mode");
-        return;
-    }
+    //if (ppu->stat.mode == PPU_MODE_DRAW) {
+    //    log_trace("PPU: Attempt to write to VRAM during MODE_DRAW");
+    //    return;
+    //}
 
     ppu->vram[addr] = value;
 }
 
 uint8_t fgb_ppu_read_vram(const fgb_ppu* ppu, uint16_t addr) {
-    if (ppu->stat.mode != PPU_MODE_VBLANK && ppu->stat.mode != PPU_MODE_HBLANK) {
-        log_warn("PPU: Attempt to read from VRAM outside of VBLANK or OAM scan mode");
-        return 0xFF; // Return a default value
-    }
+    //if (ppu->stat.mode == PPU_MODE_DRAW) {
+    //    log_warn("PPU: Attempt to read from VRAM during MODE_DRAW");
+    //    return 0xFF;
+    //}
 
     return ppu->vram[addr];
 }
@@ -214,4 +275,36 @@ void fgb_ppu_write_oam(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
 
 uint8_t fgb_ppu_read_oam(const fgb_ppu* ppu, uint16_t addr) {
     return ppu->oam[addr];
+}
+
+static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
+    // Make sure we don't draw more pixels than the screen width
+    count = min(count, SCREEN_WIDTH - ppu->pixels_drawn);
+
+    for (int i = 0; i < count; i++) {
+        const int x = ppu->pixels_drawn + i;
+        const int y = ppu->ly;
+        if (x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT) {
+            break; // Prevent drawing outside the screen
+        }
+
+        // TODO: Add scrolling
+        const int tile_x = x / TILE_WIDTH;
+        const int tile_y = y / TILE_HEIGHT;
+
+        // Get the background tile data
+        const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->lcd_control.bg_tile_map, 0, tile_x, tile_y);
+        if (!tile) {
+            log_error("PPU: Failed to get tile data for (%d, %d)", tile_x, tile_y);
+            continue;
+        }
+
+        // Get the pixel from the tile
+        const int pixel_x = x % TILE_WIDTH;
+        const int pixel_y = y % TILE_HEIGHT;
+        uint8_t pixel = fgb_ppu_get_pixel(ppu, tile, pixel_x, pixel_y);
+        ppu->screen[y * SCREEN_WIDTH + x] = fgb_ppu_get_color(ppu, pixel);
+    }
+
+    ppu->pixels_drawn += count;
 }

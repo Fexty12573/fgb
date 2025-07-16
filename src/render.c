@@ -8,8 +8,6 @@
 #include <GL/glew.h>
 #include <ulog.h>
 
-#define TILE_BLOCK_SIZE (TILES_PER_BLOCK * TILE_SIZE_BYTES) // 128 tiles per block
-
 #define TILE_BLOCK_1_ADDR (0x8000)
 #define TILE_BLOCK_2_ADDR (TILE_BLOCK_1_ADDR + TILE_BLOCK_SIZE)
 #define TILE_BLOCK_3_ADDR (TILE_BLOCK_2_ADDR + TILE_BLOCK_SIZE)
@@ -50,6 +48,28 @@ static inline uint8_t fgb_tile_get_pixel(const fgb_tile* tile, uint8_t x, uint8_
     const uint8_t lsb = tile->data[y * 2];
     const uint8_t msb = tile->data[y * 2 + 1];
     return ((msb >> (7 - x)) & 1) << 1 | ((lsb >> (7 - x)) & 1);
+}
+
+uint32_t fgb_create_screen_texture(void) {
+    uint32_t texture_id;
+    gl_call(glGenTextures(1, &texture_id));
+
+    gl_call(glBindTexture(GL_TEXTURE_2D, texture_id));
+    gl_call(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, SCREEN_WIDTH, SCREEN_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL));
+
+    gl_call(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+    gl_call(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
+    gl_call(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+    gl_call(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+
+    return texture_id;
+}
+
+void fgb_upload_screen_texture(uint32_t texture_id, const fgb_ppu* ppu) {
+    gl_call(glBindTexture(GL_TEXTURE_2D, texture_id));
+
+    // ppu->screen is already in RGBA format, so we can upload it directly
+    gl_call(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, ppu->screen));
 }
 
 uint32_t fgb_create_tile_block_texture(int tiles_per_row) {
@@ -93,7 +113,7 @@ void fgb_upload_tile_block_texture(uint32_t texture_id, int tiles_per_row, const
                 const uint8_t pixel_index = fgb_tile_get_pixel(tile, x, y);
 
                 const int tex_x = (i % tiles_per_row) * TILE_WIDTH + x;
-                const int tex_y = (i / tiles_per_row) * TILE_HEIGHT + (TILE_HEIGHT - y - 1); // flip vertically
+                const int tex_y = (i / tiles_per_row) * TILE_HEIGHT + y;
                 const int tex_index = (tex_y * (tiles_per_row * TILE_WIDTH)) + tex_x;
 
                 texture_data[tex_index] = pal->colors[pixel_index];

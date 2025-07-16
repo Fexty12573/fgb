@@ -1,11 +1,21 @@
-#ifndef FGB_PPU_H
-#define FGB_PPU_H
+#ifndef PPU_H
+#define PPU_H
 
 #include <stdint.h>
 
-#define FGB_PPU_VRAM_SIZE   0x2000
-#define FGB_PPU_OAM_SIZE    0xA0
+#define PPU_VRAM_SIZE   0x2000
+#define PPU_OAM_SIZE    0xA0
+#define SCREEN_WIDTH    160
+#define SCREEN_HEIGHT   144
 
+#define TILE_WIDTH          8
+#define TILE_HEIGHT         8
+#define TILE_SIZE           (TILE_WIDTH * TILE_HEIGHT)
+#define TILE_SIZE_BYTES     (TILE_SIZE / 4) // 2bpp
+#define TILES_PER_BLOCK     128 // Number of tiles in a block
+#define TILE_BLOCK_COUNT    3 // Number of tile blocks
+#define TILES_PER_SCANLINE  (SCREEN_WIDTH / TILE_WIDTH)
+#define TILE_BLOCK_SIZE     (TILES_PER_BLOCK * TILE_SIZE_BYTES) // 128 tiles per block
 
 enum fgb_ppu_mode {
     PPU_MODE_HBLANK = 0,
@@ -14,12 +24,21 @@ enum fgb_ppu_mode {
     PPU_MODE_DRAW
 };
 
+typedef struct fgb_palette {
+    uint32_t colors[4];
+} fgb_palette;
+
 typedef struct fgb_ppu {
-    uint8_t vram[FGB_PPU_VRAM_SIZE];
-    uint8_t oam[FGB_PPU_OAM_SIZE];
+    uint8_t vram[PPU_VRAM_SIZE];
+    uint8_t oam[PPU_OAM_SIZE];
+    uint32_t screen[SCREEN_WIDTH * SCREEN_HEIGHT];
 
     uint32_t mode_cycles; // Cycles for the current mode
     uint32_t frame_cycles; // Cycles for the current frame
+
+    int pixels_drawn; // Number of pixels drawn in the current scanline
+
+    fgb_palette palette;
 
     union {
         uint8_t value;
@@ -103,4 +122,4 @@ uint8_t fgb_ppu_read_vram(const fgb_ppu* ppu, uint16_t addr);
 void fgb_ppu_write_oam(fgb_ppu* ppu, uint16_t addr, uint8_t value);
 uint8_t fgb_ppu_read_oam(const fgb_ppu* ppu, uint16_t addr);
 
-#endif // FGB_PPU_H
+#endif // PPU_H

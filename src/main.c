@@ -52,7 +52,7 @@ static GLFWwindow* window_init(void) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 
-    GLFWwindow* window = glfwCreateWindow(640, 320, "fgb", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(SCREEN_WIDTH * 2, SCREEN_HEIGHT * 2, "fgb", NULL, NULL);
     if (!window) {
         printf("Failed to create window\n");
         glfwTerminate();
@@ -81,7 +81,7 @@ static const char* const VERTEX_SHADER_SOURCE =
 "out vec2 TexCoord;\n"
 "void main() {\n"
 "    gl_Position = vec4(position, 1.0);\n"
-"    TexCoord = texCoord;\n"
+"    TexCoord = vec2(texCoord.x, 1.0 - texCoord.y);\n"
 "}\n";
 
 static const char* const FRAGMENT_SHADER_SOURCE =
@@ -133,12 +133,10 @@ static uint32_t shader_init(void) {
 
 int block_to_display = 0;
 fgb_emu* emu = NULL;
+double framerate = 0.0;
+bool display_screen = true;
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
-    if (key == GLFW_KEY_B && action == GLFW_PRESS) {
-        block_to_display = (block_to_display + 1) % TILE_BLOCK_COUNT;
-        log_info("Displaying block %d", block_to_display);
-    }
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
     }
@@ -175,6 +173,17 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
         if (key == GLFW_KEY_O) { // Clear breakpoint at current PC
             fgb_cpu_clear_bp(emu->cpu, emu->cpu->regs.pc);
             log_info("Breakpoint cleared at 0x%04X", emu->cpu->regs.pc);
+        }
+        if (key == GLFW_KEY_F) {
+            log_info("Framerate: %.2f FPS", framerate);
+        }
+        if (key == GLFW_KEY_B) {
+            block_to_display = (block_to_display + 1) % TILE_BLOCK_COUNT;
+            log_info("Displaying block %d", block_to_display);
+        }
+        if (key == GLFW_KEY_V) {
+            display_screen = !display_screen;
+            log_info("Screen display %s", display_screen ? "enabled" : "disabled");
         }
     }
 }
@@ -230,15 +239,16 @@ int main(int argc, char** argv) {
     fgb_emu_set_log_level(emu, LOG_DEBUG);
     emu->cpu->trace = false;
 
-    fgb_cpu_set_bp(emu->cpu, 0x231);
-
     glDebugMessageCallback(gl_debug_callback, NULL);
 
     const int tiles_per_row = 16; // Number of tiles per row in the texture
-    uint32_t block_textures[TILE_BLOCK_COUNT] = { 0 };
-    block_textures[0] = fgb_create_tile_block_texture(tiles_per_row);
-    block_textures[1] = fgb_create_tile_block_texture(tiles_per_row);
-    block_textures[2] = fgb_create_tile_block_texture(tiles_per_row);
+    uint32_t block_textures[TILE_BLOCK_COUNT] = {
+        [0] = fgb_create_tile_block_texture(tiles_per_row),
+        [1] = fgb_create_tile_block_texture(tiles_per_row),
+        [2] = fgb_create_tile_block_texture(tiles_per_row),
+    };
+
+    const uint32_t screen_texture = fgb_create_screen_texture();
 
     uint32_t va, vb, ib;
     fgb_create_quad(&va, &vb, &ib);
@@ -263,21 +273,31 @@ int main(int argc, char** argv) {
 
     glfwSetKeyCallback(window, key_callback);
 
+    double last_time = glfwGetTime();
+
     while (!glfwWindowShouldClose(window)) {
+        double current_time = glfwGetTime();
+        double delta_time = current_time - last_time;
+        last_time = current_time;
+
+        framerate = 1.0 / delta_time;
+
         glfwPollEvents();
 
         fgb_cpu_step(emu->cpu);
 
-        fgb_upload_tile_block_texture(block_textures[0], tiles_per_row, emu->ppu, 0, &tile_pal);
-        fgb_upload_tile_block_texture(block_textures[1], tiles_per_row, emu->ppu, 1, &tile_pal);
-        fgb_upload_tile_block_texture(block_textures[2], tiles_per_row, emu->ppu, 2, &tile_pal);
+        if (display_screen) {
+            fgb_upload_screen_texture(screen_texture, emu->ppu);
+        } else {
+            fgb_upload_tile_block_texture(block_textures[block_to_display], tiles_per_row, emu->ppu, block_to_display, &tile_pal);
+        }
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(shader);
         glBindVertexArray(va);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, block_textures[block_to_display]);
+        glBindTexture(GL_TEXTURE_2D, display_screen ? screen_texture : block_textures[block_to_display]);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, (void*)0);
 
         glfwSwapBuffers(window);
