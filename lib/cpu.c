@@ -154,6 +154,14 @@ void fgb_cpu_step(fgb_cpu* cpu) {
             break;
         }
     }
+
+    if (cycles >= FGB_CYCLES_PER_FRAME) {
+        cpu->frames++;
+
+        if (cpu->frames != cpu->ppu->frames_rendered) {
+            log_trace("CPU frames (%d) and PPU frames (%d) are out of sync", cpu->frames, cpu->ppu->frames_rendered);
+        }
+    }
 }
 
 int fgb_cpu_execute(fgb_cpu* cpu) {

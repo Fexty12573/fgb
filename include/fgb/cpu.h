@@ -11,8 +11,8 @@
 
 
 #define FGB_CPU_CLOCK_SPEED     4194304 // 4.194304 MHz
-#define FGB_SCREEN_REFRESH_RATE 60 // 60 Hz
-#define FGB_CYCLES_PER_FRAME    (FGB_CPU_CLOCK_SPEED / FGB_SCREEN_REFRESH_RATE)
+#define FGB_SCREEN_REFRESH_RATE 59.7275 // ~59.7 Hz
+#define FGB_CYCLES_PER_FRAME    ((int)(FGB_CPU_CLOCK_SPEED / FGB_SCREEN_REFRESH_RATE))
 #define FGB_CPU_MAX_BREAKPOINTS 16
 
 
@@ -80,6 +80,7 @@ typedef struct fgb_cpu {
     bool halted;
 
     bool trace;
+    int frames;
 
     struct {
         uint8_t enable;

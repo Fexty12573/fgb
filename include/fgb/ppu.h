@@ -54,6 +54,8 @@ typedef struct fgb_ppu {
     fgb_palette bg_palette;
     fgb_palette obj_palette;
 
+    int frames_rendered;
+
     union {
         uint8_t value;
         struct {
@@ -130,7 +132,7 @@ fgb_ppu* fgb_ppu_create(void);
 void fgb_ppu_destroy(fgb_ppu* ppu);
 void fgb_ppu_set_cpu(fgb_ppu* ppu, struct fgb_cpu* cpu);
 
-void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles);
+bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles);
 
 void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value);
 uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr);

@@ -106,10 +106,10 @@ void fgb_ppu_set_cpu(fgb_ppu* ppu, fgb_cpu* cpu) {
     ppu->cpu = cpu;
 }
 
-void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
+bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
     if (!ppu->cpu) {
         log_error("PPU: CPU not set");
-        return;
+        return false;
     }
 
     ppu->mode_cycles += cycles;
@@ -117,10 +117,10 @@ void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
     ppu->dma_cycles += cycles;
 
     if (ppu->dma_active && ppu->dma_cycles >= 4) {
-        int bytes_to_transfer = min(ppu->dma_cycles / 4, PPU_DMA_BYTES - ppu->dma_bytes);
+        const int bytes_to_transfer = min(ppu->dma_cycles / 4, PPU_DMA_BYTES - ppu->dma_bytes);
         ppu->dma_cycles -= bytes_to_transfer * 4;
 
-        fgb_mmu* mmu = &ppu->cpu->mmu;
+        const fgb_mmu* mmu = &ppu->cpu->mmu;
 
         for (int i = 0; i < bytes_to_transfer; i++) {
             const uint16_t src = ppu->dma_addr + ppu->dma_bytes + i;
@@ -161,23 +161,23 @@ void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
                 ppu->stat.lyc_eq_ly = 0;
             }
 
-            if (ppu->ly == 144) {
-                ppu->stat.mode = PPU_MODE_VBLANK;
-                ppu->stat.mode_1_int = 1; // Set mode 1 interrupt flag
-                fgb_cpu_request_interrupt(ppu->cpu, IRQ_VBLANK);
-            }
-            else {
-                ppu->stat.mode = PPU_MODE_HBLANK;
-                ppu->stat.mode_0_int = 1; // Set mode 0 interrupt flag
-            }
+            ppu->stat.mode = PPU_MODE_HBLANK;
+            ppu->stat.mode_1_int = 1; // Set mode 1 interrupt flag
         }
         break;
 
     case PPU_MODE_HBLANK:
         if (ppu->mode_cycles >= HBLANK_CYCLES) {
             ppu->mode_cycles -= HBLANK_CYCLES;
-            ppu->stat.mode = PPU_MODE_OAM_SCAN;
-            ppu->stat.mode_2_int = 1; // Set mode 2 interrupt flag
+
+            if (ppu->ly == 144) {
+                ppu->stat.mode = PPU_MODE_VBLANK;
+                ppu->stat.mode_0_int = 1; // Set mode 0 interrupt flag
+                fgb_cpu_request_interrupt(ppu->cpu, IRQ_VBLANK);
+            } else {
+                ppu->stat.mode = PPU_MODE_OAM_SCAN;
+                ppu->stat.mode_2_int = 1; // Set mode 2 interrupt flag
+            }
         }
         break;
 
@@ -189,10 +189,20 @@ void fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
                 ppu->ly = 0;
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
                 ppu->stat.mode_0_int = 1; // Set mode 0 interrupt flag
+                ppu->frame_cycles = 0; // Reset frame cycles
+                ppu->frames_rendered++;
+
+                return true;
             }
         }
         break;
+    default:
+        log_error("PPU: Unknown mode %d", ppu->stat.mode);
+        ppu->stat.mode = PPU_MODE_OAM_SCAN; // Reset to a known state
+        break;
     }
+
+    return false;
 }
 
 void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
@@ -347,8 +357,8 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
         fgb_sprite* sprite = NULL;
         uint8_t sprite_pixel = 0;
         if (ppu->lcd_control.obj_enable) {
-            for (int i = 0; i < ppu->sprite_count; i++) {
-                fgb_sprite* s = (fgb_sprite*)&ppu->oam[ppu->sprite_buffer[i]];
+            for (int j = 0; j < ppu->sprite_count; j++) {
+                fgb_sprite* s = (fgb_sprite*)&ppu->oam[ppu->sprite_buffer[j]];
                 const int sprite_window_x = s->x - 8; // Adjust for sprite X position
                 const int sprite_window_y = s->y - 16;
                 if (x >= sprite_window_x && x < sprite_window_x + PPU_SPRITE_W) { // Check if the pixel is within the sprite's X bounds
@@ -412,7 +422,7 @@ void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
     const int sprite_height = ppu->lcd_control.obj_size ? PPU_SPRITE_H16 : PPU_SPRITE_H;
 
     for (int i = 0; i < PPU_OAM_SPRITES; i++) {
-        fgb_sprite* sprite = (fgb_sprite*)&ppu->oam[i * PPU_SPRITE_SIZE_BYTES];
+        const fgb_sprite* sprite = (fgb_sprite*)&ppu->oam[i * PPU_SPRITE_SIZE_BYTES];
         if (sprite->x == 0) continue; // Sprite is not visible
         if (ppu->ly < sprite->y - 16 || ppu->ly >= sprite->y - 16 + sprite_height) continue; // Sprite is not on this scanline
 
