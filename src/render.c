@@ -39,16 +39,8 @@ static const int QUAD_INDICES[] = {
 };
 
 static uint32_t* s_texture_data = NULL;
+static uint32_t* s_oam_texture_data = NULL;
 
-typedef union fgb_tile {
-    uint8_t data[TILE_SIZE_BYTES];
-} fgb_tile;
-
-static inline uint8_t fgb_tile_get_pixel(const fgb_tile* tile, uint8_t x, uint8_t y) {
-    const uint8_t lsb = tile->data[y * 2];
-    const uint8_t msb = tile->data[y * 2 + 1];
-    return ((msb >> (7 - x)) & 1) << 1 | ((lsb >> (7 - x)) & 1);
-}
 
 uint32_t fgb_create_screen_texture(void) {
     uint32_t texture_id;
@@ -129,6 +121,64 @@ void fgb_upload_tile_block_texture(uint32_t texture_id, int tiles_per_row, const
 
     gl_call(glBindTexture(GL_TEXTURE_2D, texture_id));
     gl_call(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, texture_data));
+}
+
+void fgb_create_oam_textures(uint32_t* textures, int count) {
+    // +2 to add some padding around the sprites
+    const int texture_width = PPU_SPRITE_W + 2;
+    const int texture_height = PPU_SPRITE_H16 + 2;
+
+    for (int i = 0; i < count; i++) {
+        uint32_t texture_id;
+        gl_call(glGenTextures(1, &texture_id));
+        gl_call(glBindTexture(GL_TEXTURE_2D, texture_id));
+
+        gl_call(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, texture_width, texture_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL));
+
+        gl_call(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+        gl_call(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
+        gl_call(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE));
+        gl_call(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE));
+
+        textures[i] = texture_id;
+    }
+}
+
+void fgb_upload_oam_textures(const uint32_t* textures, int count, const fgb_ppu* ppu) {
+    const size_t texture_width = PPU_SPRITE_W + 2;
+    const size_t texture_height = PPU_SPRITE_H16 + 2;
+
+    if (s_oam_texture_data == NULL) {
+        s_oam_texture_data = malloc(texture_width * texture_height * sizeof(uint32_t));
+        if (s_oam_texture_data == NULL) {
+            log_error("Failed to allocate OAM texture data");
+            return;
+        }
+    }
+
+    const fgb_sprite* sprites = (const fgb_sprite*)ppu->oam;
+
+    for (int i = 0; i < min(count, PPU_OAM_SPRITES); i++) {
+        const fgb_sprite* sprite = &sprites[i];
+
+        const int sprite_x = 1;
+        const int sprite_y = 1 + PPU_SPRITE_H;
+
+        const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, sprite->tile, true);
+
+        for (int y = 0; y < PPU_SPRITE_H; y++) {
+            for (int x = 0; x < PPU_SPRITE_W; x++) {
+                const uint8_t pixel_index = fgb_tile_get_pixel(tile, x, y);
+                const int tex_x = sprite_x + x;
+                const int tex_y = sprite_y + y;
+                const int tex_index = (tex_y * texture_width) + tex_x;
+                s_oam_texture_data[tex_index] = fgb_ppu_get_obj_color(ppu, pixel_index, sprite->palette);
+            }
+        }
+
+        gl_call(glBindTexture(GL_TEXTURE_2D, textures[i]));
+        gl_call(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, texture_width, texture_height, GL_RGBA, GL_UNSIGNED_BYTE, s_oam_texture_data));
+    }
 }
 
 void fgb_create_quad(uint32_t* vertex_array, uint32_t* vertex_buffer, uint32_t* index_buffer) {

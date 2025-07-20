@@ -10,6 +10,8 @@
 #include <GL/glew.h>
 #include <GL/GL.h>
 #include <GLFW/glfw3.h>
+#include <cimgui.h>
+#include <cimgui_impl.h>
 
 #include "ulog.h"
 
@@ -28,6 +30,9 @@ struct {
     int block_to_display;
     double render_framerate;
     double emu_framerate;
+
+    float main_scale;
+    GLFWwindow* window;
 } g_app = { NULL, { 0 }, true, true, 0, 0.0, 0.0 };
 
 static fgb_emu* emu_init(const char* rom_path) {
@@ -57,13 +62,20 @@ static GLFWwindow* window_init(void) {
     }
 
     glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
-    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 
-    GLFWwindow* window = glfwCreateWindow(SCREEN_WIDTH * 3, SCREEN_HEIGHT * 3, "fgb", NULL, NULL);
+    g_app.main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor());
+
+    GLFWwindow* window = glfwCreateWindow(
+        (int)(SCREEN_WIDTH * 5 * g_app.main_scale),
+        (int)(SCREEN_HEIGHT * 5 * g_app.main_scale),
+        "fgb", NULL, NULL
+    );
+
     if (!window) {
         printf("Failed to create window\n");
         glfwTerminate();
@@ -73,6 +85,7 @@ static GLFWwindow* window_init(void) {
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // Enable VSync
 
+    g_app.window = window;
     return window;
 }
 
@@ -140,6 +153,53 @@ static uint32_t shader_init(void) {
     glDeleteShader(fragment_shader);
 
     return shader_program;
+}
+
+static void imgui_init(void) {
+    igCreateContext(NULL);
+
+    ImGuiIO* io = igGetIO_Nil();
+    io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
+    ImGuiStyle* style = igGetStyle();
+    ImGuiStyle_ScaleAllSizes(style, g_app.main_scale);
+    style->FontScaleDpi = g_app.main_scale;
+
+    io->ConfigDpiScaleFonts = true;
+    io->ConfigDpiScaleViewports = true;
+
+    ImGui_ImplGlfw_InitForOpenGL(g_app.window, true);
+    ImGui_ImplOpenGL3_Init("#version 450 core");
+
+    igStyleColorsDark(style);
+}
+
+static void render_line_sprites(void) {
+    const fgb_emu* emu = g_app.emu;
+    const fgb_ppu* ppu = emu->ppu;
+
+    igBegin("Line Sprites", NULL, ImGuiWindowFlags_None);
+
+    if (igBeginTable("##line-sprites", 11, ImGuiTableFlags_BordersOuter, (ImVec2) { 0, 0 }, 0.0f)) {
+        for (int i = 0; i < SCREEN_HEIGHT; i++) {
+            igTableNextColumn();
+            igText("%d", i);
+
+            for (int j = 0; j < PPU_SCANLINE_SPRITES; j++) {
+                igTableNextColumn();
+                if (ppu->line_sprites[i][j] == 0xFF) {
+                    igText("  ");
+                } else {
+                    igText("%02d", ppu->line_sprites[i][j]);
+                }
+            }
+        }
+
+        igEndTable();
+    }
+
+    igEnd();
 }
 
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -238,6 +298,31 @@ static void gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum seve
     }
 }
 
+static void setup_dockspace(void) {
+    // Get the main viewport
+    const ImGuiViewport* viewport = igGetMainViewport();
+
+    // Set up a fullscreen, non-movable, non-resizable, non-collapsible window for the dockspace
+    const ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDocking |
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+        ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration;
+
+    igSetNextWindowPos(viewport->Pos, 0, (ImVec2) { 0, 0 });
+    igSetNextWindowSize(viewport->Size, 0);
+    igSetNextWindowViewport(viewport->ID);
+
+    igPushStyleVar_Float(ImGuiStyleVar_WindowRounding, 0.0f);
+    igPushStyleVar_Float(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    igBegin("DockSpaceWindow", NULL, window_flags);
+    igPopStyleVar(2);
+
+    // Create the dockspace
+    const ImGuiID dockspace_id = igGetID_Str("MyDockspace");
+    igDockSpace(dockspace_id, (ImVec2) { 0, 0 }, ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoUndocking, NULL);
+    igEnd();
+}
+
 static int emu_run(void* arg) {
     const fgb_emu* emu = arg;
 
@@ -288,6 +373,8 @@ int main(int argc, char** argv) {
         printf("Could not create shader program. Exiting\n");
         return 1;
     }
+
+    imgui_init();
     
     g_app.emu = emu_init(argv[1]);
     if (!g_app.emu) {
@@ -303,11 +390,14 @@ int main(int argc, char** argv) {
     glDebugMessageCallback(gl_debug_callback, NULL);
 
     const int tiles_per_row = 16; // Number of tiles per row in the texture
-    uint32_t block_textures[TILE_BLOCK_COUNT] = {
+    const uint32_t block_textures[TILE_BLOCK_COUNT] = {
         [0] = fgb_create_tile_block_texture(tiles_per_row),
         [1] = fgb_create_tile_block_texture(tiles_per_row),
         [2] = fgb_create_tile_block_texture(tiles_per_row),
     };
+
+    uint32_t oam_textures[PPU_OAM_SPRITES];
+    fgb_create_oam_textures(oam_textures, PPU_OAM_SPRITES);
 
     const uint32_t screen_texture = fgb_create_screen_texture();
 
@@ -358,21 +448,104 @@ int main(int argc, char** argv) {
 
         glfwPollEvents();
 
-        if (g_app.display_screen) {
-            fgb_upload_screen_texture(screen_texture, g_app.emu->ppu);
+        fgb_upload_screen_texture(screen_texture, g_app.emu->ppu);
+        fgb_upload_tile_block_texture(block_textures[0], tiles_per_row, g_app.emu->ppu, 0, &bg_pal);
+        fgb_upload_tile_block_texture(block_textures[1], tiles_per_row, g_app.emu->ppu, 1, &bg_pal);
+        fgb_upload_tile_block_texture(block_textures[2], tiles_per_row, g_app.emu->ppu, 2, &obj_pal);
+        fgb_upload_oam_textures(oam_textures, PPU_OAM_SPRITES, g_app.emu->ppu);
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        igNewFrame();
+
+        setup_dockspace();
+
+        igBegin("Viewport", NULL, ImGuiWindowFlags_NoDecoration);
+
+        ImVec2 content;
+        igGetContentRegionAvail(&content);
+
+        ImVec2 image_size;
+        if (content.x < content.y) {
+            image_size.x = content.x;
+            image_size.y = content.x / ASPECT_RATIO;
         } else {
-            fgb_upload_tile_block_texture(block_textures[g_app.block_to_display], tiles_per_row, g_app.emu->ppu, g_app.block_to_display, &bg_pal);
+            image_size.x = content.y * ASPECT_RATIO;
+            image_size.y = content.y;
         }
+
+        igSetCursorPos((ImVec2) {
+            .x = (content.x - image_size.x) / 2.0f,
+            .y = (content.y - image_size.y) / 2.0f
+        });
+        
+        igImage(
+            (ImTextureRef){ NULL, screen_texture },
+            image_size,
+            (ImVec2){ 0, 0 },
+            (ImVec2){ 1, 1 }
+        );
+        igEnd();
+
+        // Tilesets
+        igBegin("Tilesets", NULL, ImGuiWindowFlags_AlwaysAutoResize);
+        for (int i = 0; i < TILE_BLOCK_COUNT; i++) {
+            const int tile_rows = TILES_PER_BLOCK / tiles_per_row;
+            igImage(
+                (ImTextureRef){ NULL, block_textures[i] },
+                (ImVec2){ 5 * tiles_per_row * TILE_WIDTH, 5 * tile_rows * TILE_HEIGHT },
+                (ImVec2){ 0, 0 },
+                (ImVec2) { 1, 1 }
+            );
+        }
+        igEnd();
+
+        render_line_sprites();
+
+        /*igBegin("OAM", NULL, ImGuiWindowFlags_AlwaysAutoResize);
+        const int sprite_rows = 5;
+        const int sprites_per_row = PPU_OAM_SPRITES / sprite_rows;
+
+        for (int i = 0; i < PPU_OAM_SPRITES; i++) {
+            igBeginChild_ID(i, { 0 }, ImGuiChildFlags_AlwaysAutoResize | ImGuiChildFlags_Borders, ImGuiWindowFlags_None);
+            const fgb_sprite* sprite = (const fgb_sprite*)&g_app.emu->ppu->oam[i * PPU_SPRITE_SIZE_BYTES];
+
+        }
+
+        igEnd();*/
+
+        igRender();
 
         // Render at monitor refresh rate (e.g., 165Hz)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(shader);
-        glBindVertexArray(va);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, g_app.display_screen ? screen_texture : block_textures[g_app.block_to_display]);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL);
+        ImGui_ImplOpenGL3_RenderDrawData(igGetDrawData());
+
+        GLFWwindow* backup_current_context = glfwGetCurrentContext();
+        igUpdatePlatformWindows();
+        igRenderPlatformWindowsDefault(NULL, NULL);
+        glfwMakeContextCurrent(backup_current_context);
+
+        //glUseProgram(shader);
+        //glBindVertexArray(va);
+        //glActiveTexture(GL_TEXTURE0);
+        //glBindTexture(GL_TEXTURE_2D, g_app.display_screen ? screen_texture : block_textures[g_app.block_to_display]);
+        //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL);
 
         glfwSwapBuffers(window);
     }
+
+    g_app.running = false;
+    thrd_join(g_app.emu_thread, NULL);
+
+    fgb_emu_destroy(g_app.emu);
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    igDestroyContext(NULL);
+
+    glfwDestroyWindow(window);
+    glfwTerminate();
+
+    return 0;
 }

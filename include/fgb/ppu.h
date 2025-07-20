@@ -10,6 +10,7 @@
 #define PPU_DMA_BYTES PPU_OAM_SIZE // Number of bytes transferred in a single DMA operation
 #define SCREEN_WIDTH  160
 #define SCREEN_HEIGHT 144
+#define ASPECT_RATIO  ((float)SCREEN_WIDTH / (float)SCREEN_HEIGHT)
 
 #define TILE_WIDTH          8
 #define TILE_HEIGHT         8
@@ -39,10 +40,34 @@ typedef struct fgb_palette {
     uint32_t colors[4];
 } fgb_palette;
 
+typedef struct fgb_tile {
+    uint8_t data[16]; // 8x8 tile data, 2 bytes per row
+} fgb_tile;
+
+typedef struct fgb_sprite {
+    uint8_t y;
+    uint8_t x;
+    uint8_t tile;
+    union {
+        uint8_t flags;
+        struct {
+            uint8_t : 3; // Palette in CGB mode
+            uint8_t : 1; // Bank in CGB mode
+            uint8_t palette : 1;
+            uint8_t x_flip : 1;
+            uint8_t y_flip : 1;
+            uint8_t priority : 1; // 0 = in front of background, 1 = behind background
+        };
+    };
+} fgb_sprite;
+
 typedef struct fgb_ppu {
     uint8_t vram[PPU_VRAM_SIZE];
     uint8_t oam[PPU_OAM_SIZE];
     uint32_t framebuffers[PPU_FRAMEBUFFER_COUNT][SCREEN_WIDTH * SCREEN_HEIGHT];
+
+    // For keeping track of which sprites were rendered on which scanline
+    uint8_t line_sprites[SCREEN_HEIGHT][PPU_SCANLINE_SPRITES];
 
     int back_buffer;
     mtx_t buffer_mutex;
@@ -140,6 +165,12 @@ void fgb_ppu_set_cpu(fgb_ppu* ppu, struct fgb_cpu* cpu);
 const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu);
 void fgb_ppu_lock_buffer(fgb_ppu* ppu);
 void fgb_ppu_unlock_buffer(fgb_ppu* ppu);
+
+int fgb_ppu_get_tile_id(const fgb_ppu* ppu, int tile_map, int x, int y);
+const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_sprite);
+uint8_t fgb_tile_get_pixel(const fgb_tile* tile, uint8_t x, uint8_t y);
+uint32_t fgb_ppu_get_bg_color(const fgb_ppu* ppu, uint8_t pixel_index);
+uint32_t fgb_ppu_get_obj_color(const fgb_ppu* ppu, uint8_t pixel_index, int palette);
 
 bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles);
 
