@@ -107,9 +107,9 @@ typedef struct fgb_ppu {
         struct {
             uint8_t mode : 2;
             uint8_t lyc_eq_ly : 1;
-            uint8_t mode_0_int : 1;
-            uint8_t mode_1_int : 1;
-            uint8_t mode_2_int : 1;
+            uint8_t hblank_int : 1;
+            uint8_t vblank_int : 1;
+            uint8_t oam_int : 1;
             uint8_t lyc_int : 1;
         };
         struct {
@@ -148,6 +148,12 @@ typedef struct fgb_ppu {
             uint8_t col3 : 2;
         };
     } obp[2];
+
+    struct {
+        bool hide_bg;
+        bool hide_sprites;
+        bool hide_window;
+    } debug;
 
     bool dma_active; // DMA transfer is active
     uint16_t dma_addr; // Address for DMA transfer

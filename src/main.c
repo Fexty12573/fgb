@@ -202,10 +202,47 @@ static void render_line_sprites(void) {
     igEnd();
 }
 
+static void render_debug_options(void) {
+    igBegin("Debug Options", NULL, ImGuiWindowFlags_None);
+
+    if (igCheckbox("Trace", &g_app.emu->cpu->trace)) {
+        log_info("CPU trace %s", g_app.emu->cpu->trace ? "enabled" : "disabled");
+    }
+
+    if (igCheckbox("Hide Background", &g_app.emu->ppu->debug.hide_bg)) {
+        log_info("Background rendering %s", g_app.emu->ppu->debug.hide_bg ? "disabled" : "enabled");
+    }
+
+    if (igCheckbox("Hide Sprites", &g_app.emu->ppu->debug.hide_sprites)) {
+        log_info("Sprite rendering %s", g_app.emu->ppu->debug.hide_sprites ? "disabled" : "enabled");
+    }
+
+    if (igCheckbox("Hide Window", &g_app.emu->ppu->debug.hide_window)) {
+        log_info("Window rendering %s", g_app.emu->ppu->debug.hide_window ? "disabled" : "enabled");
+    }
+
+    if (igCheckbox("Display Screen", &g_app.display_screen)) {
+        log_info("Screen display %s", g_app.display_screen ? "enabled" : "disabled");
+    }
+
+    if (igButton("Reset CPU", (ImVec2) { 0, 0 })) {
+        fgb_cpu_reset(g_app.emu->cpu);
+        log_info("CPU reset");
+    }
+
+    if (igButton("Dump CPU State", (ImVec2) { 0, 0 })) {
+        fgb_cpu_dump_state(g_app.emu->cpu);
+    }
+
+    igEnd();
+}
+
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
     }
+
+    static int lastKey = -1;
 
     fgb_emu* emu = g_app.emu;
     if (action == GLFW_PRESS) {
@@ -251,6 +288,8 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
             log_info("Screen display %s", g_app.display_screen ? "enabled" : "disabled");
         }
     }
+
+    lastKey = key;
 
     // Joypad Input
     if (action == GLFW_REPEAT) {
@@ -501,6 +540,7 @@ int main(int argc, char** argv) {
         igEnd();
 
         render_line_sprites();
+        render_debug_options();
 
         /*igBegin("OAM", NULL, ImGuiWindowFlags_AlwaysAutoResize);
         const int sprite_rows = 5;

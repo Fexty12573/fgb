@@ -140,6 +140,11 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
             ppu->oam_scan_done = false; // Set this for the next scanline
             ppu->stat.mode = PPU_MODE_DRAW;
             ppu->pixels_drawn = 0; // Reset pixel count for the new scanline
+
+            if (ppu->mode_cycles > 0) {
+                // Immediately render pixels if there are leftover cycles
+                fgb_ppu_render_pixels(ppu, ppu->mode_cycles);
+            }
         }
         break;
 
@@ -153,13 +158,17 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
 
             if (ppu->lyc == ppu->ly) {
                 ppu->stat.lyc_eq_ly = 1;
-                ppu->stat.lyc_int = 1;
+                if (ppu->stat.lyc_int) {
+                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
+                }
             } else {
                 ppu->stat.lyc_eq_ly = 0;
             }
 
             ppu->stat.mode = PPU_MODE_HBLANK;
-            ppu->stat.mode_1_int = 1; // Set mode 1 interrupt flag
+            if (ppu->stat.hblank_int) {
+                fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
+            }
         }
         break;
 
@@ -169,11 +178,12 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
 
             if (ppu->ly == 144) {
                 ppu->stat.mode = PPU_MODE_VBLANK;
-                ppu->stat.mode_0_int = 1; // Set mode 0 interrupt flag
                 fgb_cpu_request_interrupt(ppu->cpu, IRQ_VBLANK);
             } else {
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
-                ppu->stat.mode_2_int = 1; // Set mode 2 interrupt flag
+                if (ppu->stat.oam_int) {
+                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
+                }
             }
         }
         break;
@@ -185,7 +195,6 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
             if (ppu->ly >= 154) {
                 ppu->ly = 0;
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
-                ppu->stat.mode_0_int = 1; // Set mode 0 interrupt flag
                 ppu->frame_cycles = 0; // Reset frame cycles
                 ppu->frames_rendered++;
 
@@ -417,9 +426,14 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
         uint8_t bg_pixel = fgb_tile_get_pixel(tile, pixel_x, pixel_y);
         const int screen_index = y * SCREEN_WIDTH + x;
 
-        if (!sprite) {
-            // No sprite at this position, just draw the background pixel
-            framebuffer[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);
+        if (!sprite || ppu->debug.hide_sprites) {
+            if (ppu->debug.hide_bg) {
+                framebuffer[screen_index] = 0x00000000; // Black
+            } else {
+                // No sprite at this position, just draw the background pixel
+                framebuffer[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);
+            }
+
             continue;
         }
 
