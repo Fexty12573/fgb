@@ -31,16 +31,31 @@ static void fgb_unimplemented_2(fgb_cpu* cpu, const fgb_instruction* ins, uint16
 
 static char fmt_buffer[64];
 static inline char* fgb_fmt_0(const fgb_instruction* ins) {
+    if (ins->disassembly == NULL) {
+        snprintf(fmt_buffer, sizeof(fmt_buffer), "DB %02X", ins->opcode);
+        return fmt_buffer;
+    }
+
     strcpy_s(fmt_buffer, sizeof(fmt_buffer), ins->disassembly);
     return fmt_buffer;
 }
 
 static inline char* fgb_fmt_1(const fgb_instruction* ins, uint8_t operand) {
+    if (ins->disassembly == NULL) {
+        snprintf(fmt_buffer, sizeof(fmt_buffer), "DB %02X %02X", ins->opcode, operand);
+        return fmt_buffer;
+    }
+
     snprintf(fmt_buffer, sizeof(fmt_buffer), ins->disassembly, operand);
     return fmt_buffer;
 }
 
 static inline char* fgb_fmt_2(const fgb_instruction* ins, uint16_t operand) {
+    if (ins->disassembly == NULL) {
+        snprintf(fmt_buffer, sizeof(fmt_buffer), "DB %02X %02X %02X", ins->opcode, operand & 0xFF, (operand >> 8) & 0xFF);
+        return fmt_buffer;
+    }
+
     snprintf(fmt_buffer, sizeof(fmt_buffer), ins->disassembly, operand);
     return fmt_buffer;
 }

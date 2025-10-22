@@ -24,6 +24,8 @@ enum fgb_cpu_interrupt {
     IRQ_JOYPAD  = 1 << 4,
 };
 
+typedef void (*fgb_cpu_bp_callback)(struct fgb_cpu* cpu, size_t bp, uint16_t addr);
+
 typedef struct fgb_cpu_regs {
     union {
         uint16_t af;
@@ -90,6 +92,7 @@ typedef struct fgb_cpu {
     uint16_t breakpoints[FGB_CPU_MAX_BREAKPOINTS];
     bool debugging;
     bool do_step;
+    fgb_cpu_bp_callback bp_callback;
 } fgb_cpu;
 
 
@@ -108,7 +111,10 @@ uint8_t fgb_cpu_read(const fgb_cpu* cpu, uint16_t addr);
 // Debugging
 void fgb_cpu_dump_state(const fgb_cpu* cpu);
 void fgb_cpu_disassemble(const fgb_cpu* cpu, uint16_t addr, int count);
+void fgb_cpu_disassemble_to(const fgb_cpu* cpu, uint16_t addr, int count, char** dest);
+uint16_t fgb_cpu_disassemble_one(const fgb_cpu* cpu, uint16_t addr, char* dest, size_t dest_size);
 void fgb_cpu_set_bp(fgb_cpu* cpu, uint16_t addr);
 void fgb_cpu_clear_bp(fgb_cpu* cpu, uint16_t addr);
+void fgb_cpu_set_bp_callback(fgb_cpu* cpu, fgb_cpu_bp_callback callback);
 
 #endif // FGB_CPU_H

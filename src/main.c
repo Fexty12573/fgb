@@ -22,7 +22,9 @@ size_t file_size(FILE* f) {
     return size;
 }
 
-struct {
+#define DISASM_LINES 20
+
+struct app {
     fgb_emu* emu;
     thrd_t emu_thread;
     bool running;
@@ -33,7 +35,37 @@ struct {
 
     float main_scale;
     GLFWwindow* window;
-} g_app = { NULL, { 0 }, true, true, 0, 0.0, 0.0 };
+
+    uint16_t disasm_addr;
+    char disasm_buffer[DISASM_LINES][64];
+    char* disasm_buffer_ptrs[DISASM_LINES];
+};
+
+struct app g_app = {
+    .emu = NULL,
+    .running = true,
+    .display_screen = true,
+    .block_to_display = 0,
+    .render_framerate = 0.0,
+    .emu_framerate = 0.0,
+    .main_scale = 1.0f,
+    .window = NULL,
+    .disasm_addr = 0x0100,
+    .disasm_buffer = { {0} },
+    .disasm_buffer_ptrs = { NULL },
+};
+
+static void set_disasm_addr(uint16_t addr) {
+    g_app.disasm_addr = addr;
+    fgb_cpu_disassemble_to(g_app.emu->cpu, g_app.disasm_addr, DISASM_LINES, g_app.disasm_buffer_ptrs);
+}
+
+static void on_breakpoint(fgb_cpu* cpu, size_t bp, uint16_t addr) {
+    (void)cpu;
+    (void)bp;
+
+    g_app.disasm_addr = addr;
+}
 
 static fgb_emu* emu_init(const char* rom_path) {
     FILE* f;
@@ -175,6 +207,20 @@ static void imgui_init(void) {
     igStyleColorsDark(style);
 }
 
+static void render_tilesets(int tiles_per_row, ImTextureID* block_textures) {
+    igBegin("Tilesets", NULL, ImGuiWindowFlags_AlwaysAutoResize);
+    for (int i = 0; i < TILE_BLOCK_COUNT; i++) {
+        const int tile_rows = TILES_PER_BLOCK / tiles_per_row;
+        igImage(
+            (ImTextureRef) { NULL, block_textures[i] },
+            (ImVec2) { 5 * tiles_per_row * TILE_WIDTH, 5 * tile_rows * TILE_HEIGHT },
+            (ImVec2) { 0, 0 },
+            (ImVec2) { 1, 1 }
+        );
+    }
+    igEnd();
+}
+
 static void render_line_sprites(void) {
     const fgb_emu* emu = g_app.emu;
     const fgb_ppu* ppu = emu->ppu;
@@ -232,6 +278,31 @@ static void render_debug_options(void) {
 
     if (igButton("Dump CPU State", (ImVec2) { 0, 0 })) {
         fgb_cpu_dump_state(g_app.emu->cpu);
+    }
+
+    igBeginChild_Str("Disassembly", (ImVec2) { 0, 0 }, ImGuiChildFlags_Borders, ImGuiWindowFlags_None);
+
+    if (igInputScalar("Address", ImGuiDataType_U16, &g_app.disasm_addr, NULL, NULL, "0x%04X", ImGuiInputTextFlags_CharsHexadecimal)) {
+        set_disasm_addr(g_app.disasm_addr);
+    }
+
+    igSameLine(0.0f, -1.0f);
+    if (igButton("Goto PC", (ImVec2) { 0, 0 })) {
+        set_disasm_addr(g_app.emu->cpu->regs.pc);
+    }
+
+    for (int i = 0; i < DISASM_LINES; i++) {
+        igText("%s", g_app.disasm_buffer_ptrs[i]);
+    }
+
+    igEndChild();
+
+    if (igIsItemHovered(ImGuiHoveredFlags_None)) {
+        // Scroll address with mouse wheel
+        float wheel = igGetIO_Nil()->MouseWheel;
+        if (wheel != 0.0f) {
+            set_disasm_addr(g_app.disasm_addr + (int)(-wheel * 4));
+        }
     }
 
     igEnd();
@@ -420,6 +491,13 @@ int main(int argc, char** argv) {
         printf("Could not create emulator. Exiting\n");
         return 1;
     }
+
+    for (int i = 0; i < DISASM_LINES; i++) {
+        g_app.disasm_buffer_ptrs[i] = g_app.disasm_buffer[i];
+    }
+
+    set_disasm_addr(0x100);
+    fgb_cpu_set_bp_callback(g_app.emu->cpu, on_breakpoint);
     
     ulog_set_quiet(false);
     ulog_set_level(LOG_DEBUG);
@@ -526,37 +604,12 @@ int main(int argc, char** argv) {
         );
         igEnd();
 
-        // Tilesets
-        igBegin("Tilesets", NULL, ImGuiWindowFlags_AlwaysAutoResize);
-        for (int i = 0; i < TILE_BLOCK_COUNT; i++) {
-            const int tile_rows = TILES_PER_BLOCK / tiles_per_row;
-            igImage(
-                (ImTextureRef){ NULL, block_textures[i] },
-                (ImVec2){ 5 * tiles_per_row * TILE_WIDTH, 5 * tile_rows * TILE_HEIGHT },
-                (ImVec2){ 0, 0 },
-                (ImVec2) { 1, 1 }
-            );
-        }
-        igEnd();
-
+        render_tilesets(tiles_per_row, block_textures);
         render_line_sprites();
         render_debug_options();
 
-        /*igBegin("OAM", NULL, ImGuiWindowFlags_AlwaysAutoResize);
-        const int sprite_rows = 5;
-        const int sprites_per_row = PPU_OAM_SPRITES / sprite_rows;
-
-        for (int i = 0; i < PPU_OAM_SPRITES; i++) {
-            igBeginChild_ID(i, { 0 }, ImGuiChildFlags_AlwaysAutoResize | ImGuiChildFlags_Borders, ImGuiWindowFlags_None);
-            const fgb_sprite* sprite = (const fgb_sprite*)&g_app.emu->ppu->oam[i * PPU_SPRITE_SIZE_BYTES];
-
-        }
-
-        igEnd();*/
-
         igRender();
 
-        // Render at monitor refresh rate (e.g., 165Hz)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         ImGui_ImplOpenGL3_RenderDrawData(igGetDrawData());
@@ -565,12 +618,6 @@ int main(int argc, char** argv) {
         igUpdatePlatformWindows();
         igRenderPlatformWindowsDefault(NULL, NULL);
         glfwMakeContextCurrent(backup_current_context);
-
-        //glUseProgram(shader);
-        //glBindVertexArray(va);
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D, g_app.display_screen ? screen_texture : block_textures[g_app.block_to_display]);
-        //glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, NULL);
 
         glfwSwapBuffers(window);
     }

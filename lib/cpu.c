@@ -141,11 +141,15 @@ void fgb_cpu_step(fgb_cpu* cpu) {
     while (cycles < FGB_CYCLES_PER_FRAME) {
         cycles += fgb_cpu_execute(cpu);
 
-        for (int i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
+        for (size_t i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
             if (cpu->breakpoints[i] != FGB_BP_ADDR_NONE && cpu->regs.pc == cpu->breakpoints[i]) {
                 log_info("Breakpoint hit at 0x%04X", cpu->regs.pc);
                 cpu->debugging = true;
                 cpu->do_step = false;
+
+                if (cpu->bp_callback) {
+                    cpu->bp_callback(cpu, i, cpu->regs.pc);
+                }
             }
         }
 
@@ -329,6 +333,61 @@ void fgb_cpu_disassemble(const fgb_cpu* cpu, uint16_t addr, int count) {
     }
 }
 
+void fgb_cpu_disassemble_to(const fgb_cpu* cpu, uint16_t addr, int count, char** dest) {
+    int offset = 0;
+    for (int i = 0; i < count; i++) {
+        const uint8_t opcode = fgb_mmu_read_u8(cpu, addr + offset);
+        const fgb_instruction* instruction = fgb_instruction_get(opcode);
+        assert(instruction->opcode == opcode);
+        uint8_t op8 = 0;
+        uint16_t op16 = 0;
+        switch (instruction->operand_size) {
+        case 0:
+            sprintf(dest[i], "0x%04X: %s", addr + offset, instruction->fmt_0(instruction));
+            break;
+        case 1:
+            op8 = fgb_mmu_read_u8(cpu, addr + offset + 1);
+            sprintf(dest[i], "0x%04X: %s", addr + offset, instruction->fmt_1(instruction, op8));
+            break;
+        case 2:
+            op16 = fgb_mmu_read_u16(cpu, addr + offset + 1);
+            sprintf(dest[i], "0x%04X: %s", addr + offset, instruction->fmt_2(instruction, op16));
+            break;
+        default:
+            log_error("Invalid operand size: %d", instruction->operand_size);
+            return;
+        }
+
+        offset += instruction->operand_size + 1; // +1 for the opcode byte
+    }
+}
+
+uint16_t fgb_cpu_disassemble_one(const fgb_cpu* cpu, uint16_t addr, char* dest, size_t dest_size) {
+    const uint8_t opcode = fgb_mmu_read_u8(cpu, addr);
+    const fgb_instruction* instruction = fgb_instruction_get(opcode);
+    assert(instruction->opcode == opcode);
+    uint8_t op8 = 0;
+    uint16_t op16 = 0;
+    switch (instruction->operand_size) {
+    case 0:
+        strncpy(dest, instruction->fmt_0(instruction), dest_size);
+        break;
+    case 1:
+        op8 = fgb_mmu_read_u8(cpu, addr + 1);
+        strncpy(dest, instruction->fmt_1(instruction, op8), dest_size);
+        break;
+    case 2:
+        op16 = fgb_mmu_read_u16(cpu, addr + 1);
+        strncpy(dest, instruction->fmt_2(instruction, op16), dest_size);
+        break;
+    default:
+        log_error("Invalid operand size: %d", instruction->operand_size);
+        return;
+    }
+
+    return addr + instruction->operand_size + 1; // +1 for the opcode byte
+}
+
 void fgb_cpu_set_bp(fgb_cpu* cpu, uint16_t addr) {
     for (size_t i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
         if (cpu->breakpoints[i] == addr) {
@@ -355,6 +414,10 @@ void fgb_cpu_clear_bp(fgb_cpu* cpu, uint16_t addr) {
     }
 
     log_warn("Breakpoint not found: 0x%04X", addr);
+}
+
+void fgb_cpu_set_bp_callback(fgb_cpu* cpu, fgb_cpu_bp_callback callback) {
+    cpu->bp_callback = callback;
 }
 
 uint8_t fgb_cpu_fetch(fgb_cpu* cpu) {
