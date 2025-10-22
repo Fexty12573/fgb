@@ -179,6 +179,10 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
             if (ppu->ly == 144) {
                 ppu->stat.mode = PPU_MODE_VBLANK;
                 fgb_cpu_request_interrupt(ppu->cpu, IRQ_VBLANK);
+
+                if (ppu->stat.vblank_int) {
+                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
+                }
             } else {
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
                 if (ppu->stat.oam_int) {
@@ -207,6 +211,10 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
 
                 // Clear the line sprites for the next frame
                 memset(ppu->line_sprites, 0xFF, sizeof(ppu->line_sprites));
+
+                if (ppu->stat.oam_int) {
+                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
+                }
 
                 return true;
             }
