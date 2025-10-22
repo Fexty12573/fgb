@@ -44,7 +44,7 @@ static inline const fgb_instruction* fgb_instruction_get(uint8_t opcode) {
 }
 
 static inline uint8_t fgb_instruction_get_cb_cycles(uint8_t opcode) {
-    return fgb_cb_instruction_cycles[opcode];
+    return fgb_cb_instruction_cycles[opcode] * 4; // Convert to clock cycles
 }
 
 // x0
