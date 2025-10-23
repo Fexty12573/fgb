@@ -380,16 +380,21 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
 
     uint32_t* framebuffer = ppu->framebuffers[ppu->back_buffer];
 
+    const int scx = ppu->scroll.x;
+    const int scy = ppu->scroll.y;
+
     for (int i = 0; i < count; i++) {
-        const int x = ppu->pixels_drawn + i;
-        const int y = ppu->ly;
-        if (x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT) {
+        const int sx = ppu->pixels_drawn + i;
+        const int sy = ppu->ly;
+        if (sx >= SCREEN_WIDTH || sy >= SCREEN_HEIGHT) {
             break; // Prevent drawing outside the screen
         }
 
-        // TODO: Add scrolling
-        const int tile_x = x / TILE_WIDTH;
-        const int tile_y = y / TILE_HEIGHT;
+        const int bx = (sx + scx) & 0xFF;
+		const int by = (sy + scy) & 0xFF;
+
+		const int tile_x = (bx / TILE_WIDTH) % TILE_MAP_WIDTH;
+		const int tile_y = (by / TILE_HEIGHT) % TILE_MAP_HEIGHT;
 
         // Check if there is a sprite at this position
         fgb_sprite* sprite = NULL;
@@ -400,7 +405,7 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
                 fgb_sprite* s = (fgb_sprite*)&ppu->oam[ppu->sprite_buffer[j]];
                 const int sprite_window_x = s->x - 8; // Adjust for sprite X position
                 const int sprite_window_y = s->y - 16;
-                if (x >= sprite_window_x && x < sprite_window_x + PPU_SPRITE_W) { // Check if the pixel is within the sprite's X bounds
+                if (sx >= sprite_window_x && sx < sprite_window_x + PPU_SPRITE_W) { // Check if the pixel is within the sprite's X bounds
                     sprite = s;
                     sprite_index = ppu->sprite_buffer[j];
 
@@ -412,8 +417,8 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
                         continue;
                     }
 
-                    const int pixel_x = (x - sprite_window_x) % TILE_WIDTH;
-                    const int pixel_y = (y - sprite_window_y) % TILE_HEIGHT;
+                    const int pixel_x = (sx - sprite_window_x) % TILE_WIDTH;
+                    const int pixel_y = (sy - sprite_window_y) % TILE_HEIGHT;
                     sprite_pixel = fgb_tile_get_pixel(tile, pixel_x, pixel_y);
                     break;
                 }
@@ -429,10 +434,10 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
         }
 
         // Get the pixel from the tile
-        const int pixel_x = x % TILE_WIDTH;
-        const int pixel_y = y % TILE_HEIGHT;
+		const int pixel_x = bx % TILE_WIDTH;
+		const int pixel_y = by % TILE_HEIGHT;
         uint8_t bg_pixel = fgb_tile_get_pixel(tile, pixel_x, pixel_y);
-        const int screen_index = y * SCREEN_WIDTH + x;
+        const int screen_index = sy * SCREEN_WIDTH + sx;
 
         if (!sprite || ppu->debug.hide_sprites) {
             if (ppu->debug.hide_bg) {
