@@ -383,6 +383,9 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
     const int scx = ppu->scroll.x;
     const int scy = ppu->scroll.y;
 
+	const int wx = ppu->window_pos.x >= 7 ? ppu->window_pos.x - 7 : 0;
+	const int wy = ppu->window_pos.y;
+
     for (int i = 0; i < count; i++) {
         const int sx = ppu->pixels_drawn + i;
         const int sy = ppu->ly;
@@ -417,8 +420,8 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
                         continue;
                     }
 
-                    const int pixel_x = (sx - sprite_window_x) % TILE_WIDTH;
-                    const int pixel_y = (sy - sprite_window_y) % TILE_HEIGHT;
+                    const uint8_t pixel_x = (sx - sprite_window_x) % TILE_WIDTH;
+                    const uint8_t pixel_y = (sy - sprite_window_y) % TILE_HEIGHT;
                     sprite_pixel = fgb_tile_get_pixel(tile, pixel_x, pixel_y);
                     break;
                 }
@@ -434,14 +437,33 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
         }
 
         // Get the pixel from the tile
-		const int pixel_x = bx % TILE_WIDTH;
-		const int pixel_y = by % TILE_HEIGHT;
+		const uint8_t pixel_x = bx % TILE_WIDTH;
+		const uint8_t pixel_y = by % TILE_HEIGHT;
         uint8_t bg_pixel = fgb_tile_get_pixel(tile, pixel_x, pixel_y);
         const int screen_index = sy * SCREEN_WIDTH + sx;
+
+        if (ppu->lcd_control.wnd_enable && sx >= wx && sy >= wy) {
+			const int rel_window_x = sx - wx;
+			const int rel_window_y = sy - wy;
+            const uint8_t window_x = rel_window_x % TILE_WIDTH;
+            const uint8_t window_y = rel_window_y % TILE_HEIGHT;
+            const int window_tile_x = (rel_window_x / TILE_WIDTH) % TILE_MAP_WIDTH;
+            const int window_tile_y = (rel_window_y / TILE_HEIGHT) % TILE_MAP_HEIGHT;
+
+            const int window_tile_id = fgb_ppu_get_tile_id(ppu, ppu->lcd_control.wnd_tile_map, window_tile_x, window_tile_y);
+            const fgb_tile* window_tile = fgb_ppu_get_tile_data(ppu, window_tile_id, false);
+            if (window_tile) {
+                bg_pixel = fgb_tile_get_pixel(window_tile, window_x, window_y);
+            } else {
+                log_error("PPU: Failed to get window tile data for tile ID %d", window_tile_id);
+			}
+        }
 
         if (!sprite || ppu->debug.hide_sprites) {
             if (ppu->debug.hide_bg) {
                 framebuffer[screen_index] = 0x00000000; // Black
+            } else if (!ppu->lcd_control.bg_wnd_enable) {
+				framebuffer[screen_index] = 0xFFFFFFFF; // White
             } else {
                 // No sprite at this position, just draw the background pixel
                 framebuffer[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);

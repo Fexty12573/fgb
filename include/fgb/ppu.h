@@ -89,7 +89,7 @@ typedef struct fgb_ppu {
     union {
         uint8_t value;
         struct {
-            uint8_t bg_wnd_prio_enable : 1;
+            uint8_t bg_wnd_enable : 1;
             uint8_t obj_enable : 1;
             uint8_t obj_size : 1;
             uint8_t bg_tile_map : 1;
