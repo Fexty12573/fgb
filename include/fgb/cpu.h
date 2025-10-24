@@ -25,6 +25,7 @@ enum fgb_cpu_interrupt {
 };
 
 typedef void (*fgb_cpu_bp_callback)(struct fgb_cpu* cpu, size_t bp, uint16_t addr);
+typedef void (*fgb_cpu_step_callback)(struct fgb_cpu* cpu);
 
 typedef struct fgb_cpu_regs {
     union {
@@ -93,6 +94,7 @@ typedef struct fgb_cpu {
     bool debugging;
     bool do_step;
     fgb_cpu_bp_callback bp_callback;
+    fgb_cpu_step_callback step_callback;
 } fgb_cpu;
 
 
@@ -117,5 +119,6 @@ void fgb_cpu_set_bp(fgb_cpu* cpu, uint16_t addr);
 void fgb_cpu_clear_bp(fgb_cpu* cpu, uint16_t addr);
 int fgb_cpu_get_bp_at(const fgb_cpu* cpu, uint16_t addr);
 void fgb_cpu_set_bp_callback(fgb_cpu* cpu, fgb_cpu_bp_callback callback);
+void fgb_cpu_set_step_callback(fgb_cpu* cpu, fgb_cpu_step_callback callback);
 
 #endif // FGB_CPU_H

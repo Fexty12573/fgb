@@ -68,7 +68,11 @@ static void on_breakpoint(fgb_cpu* cpu, size_t bp, uint16_t addr) {
     (void)cpu;
     (void)bp;
 
-    g_app.disasm_addr = addr;
+    set_disasm_addr(addr);
+}
+
+static void on_step(fgb_cpu* cpu) {
+    set_disasm_addr(cpu->regs.pc);
 }
 
 static fgb_emu* emu_init(const char* rom_path) {
@@ -291,9 +295,34 @@ static void render_debug_options(void) {
     }
 
     igSameLine(0.0f, -1.0f);
+
     if (igButton("Goto PC", (ImVec2) { 0, 0 })) {
         set_disasm_addr(g_app.emu->cpu->regs.pc);
     }
+
+    igBeginDisabled(!g_app.emu->cpu->debugging);
+
+    if (igButton("Step Over", (ImVec2) { 0, 0 })) {
+        g_app.emu->cpu->do_step = true;
+    }
+
+    igSameLine(0.0f, -1.0f);
+    
+    if (igButton("Continue", (ImVec2) { 0, 0 })) {
+        g_app.emu->cpu->debugging = false;
+    }
+
+    igEndDisabled();
+
+    igSameLine(0.0f, -1.0f);
+
+    if (igButton("Pause", (ImVec2) { 0, 0 })) {
+        g_app.emu->cpu->debugging = true;
+        log_info("Execution stopped at 0x%04X", g_app.emu->cpu->regs.pc);
+        set_disasm_addr(g_app.emu->cpu->regs.pc);
+    }
+
+    igPushStyleColor_U32(ImGuiCol_CheckMark, 0xFF0000FF);
 
     if (igBeginTable("Disassembly Table", 4, ImGuiTableFlags_BordersOuter | ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0, 0 }, 0.0f)) {
         for (int i = 0; i < DISASM_LINES; i++) {
@@ -334,6 +363,8 @@ static void render_debug_options(void) {
 		igEndTable();
     }
 
+    igPopStyleColor(1);
+
     igEndChild();
 
     if (igIsItemHovered(ImGuiHoveredFlags_None)) {
@@ -351,8 +382,6 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
     }
-
-    static int lastKey = -1;
 
     fgb_emu* emu = g_app.emu;
     if (action == GLFW_PRESS) {
@@ -398,8 +427,6 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
             log_info("Screen display %s", g_app.display_screen ? "enabled" : "disabled");
         }
     }
-
-    lastKey = key;
 
     // Joypad Input
     if (action == GLFW_REPEAT) {
@@ -491,7 +518,7 @@ static int emu_run(void* arg) {
         if (to_sleep > 0.0) {
             ts.tv_sec = (time_t)to_sleep;
             ts.tv_nsec = (long)((to_sleep - (time_t)to_sleep) * 1e9);
-            thrd_sleep(&ts, NULL);
+            (void)thrd_sleep(&ts, NULL);
         }
 
         const double actual_frametime = glfwGetTime() - start_time;
@@ -537,6 +564,7 @@ int main(int argc, char** argv) {
 
     set_disasm_addr(0x100);
     fgb_cpu_set_bp_callback(g_app.emu->cpu, on_breakpoint);
+    fgb_cpu_set_step_callback(g_app.emu->cpu, on_step);
     
     ulog_set_quiet(false);
     ulog_set_level(LOG_DEBUG);
@@ -583,7 +611,10 @@ int main(int argc, char** argv) {
 
     glfwSetKeyCallback(window, key_callback);
 
-    thrd_create(&g_app.emu_thread, emu_run, g_app.emu);
+    if (thrd_create(&g_app.emu_thread, emu_run, g_app.emu) != thrd_success) {
+        log_error("Could not create emulator thread. Exiting");
+        return 1;
+    }
 
     double last_time = glfwGetTime();
     double last_title_update = last_time;
@@ -662,7 +693,9 @@ int main(int argc, char** argv) {
     }
 
     g_app.running = false;
-    thrd_join(g_app.emu_thread, NULL);
+    if (thrd_join(g_app.emu_thread, NULL) != thrd_success) {
+        log_error("Could not join emulator thread.");
+    }
 
     fgb_emu_destroy(g_app.emu);
 

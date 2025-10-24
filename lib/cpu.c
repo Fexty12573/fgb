@@ -155,6 +155,11 @@ void fgb_cpu_step(fgb_cpu* cpu) {
 
         if (cpu->debugging) {
             cpu->do_step = false; // Reset step flag after stepping
+
+            if (cpu->step_callback) {
+                cpu->step_callback(cpu);
+            }
+
             break;
         }
     }
@@ -428,6 +433,10 @@ int fgb_cpu_get_bp_at(const fgb_cpu* cpu, uint16_t addr) {
 
 void fgb_cpu_set_bp_callback(fgb_cpu* cpu, fgb_cpu_bp_callback callback) {
     cpu->bp_callback = callback;
+}
+
+void fgb_cpu_set_step_callback(fgb_cpu* cpu, fgb_cpu_step_callback callback) {
+    cpu->step_callback = callback;
 }
 
 uint8_t fgb_cpu_fetch(fgb_cpu* cpu) {
