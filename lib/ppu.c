@@ -502,7 +502,6 @@ void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
     }
 
     if (ppu->dma_active) {
-        log_warn("PPU: OAM scan requested while DMA is active, waiting for DMA to complete");
         return; // Wait for DMA to finish
     }
 

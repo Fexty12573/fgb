@@ -416,6 +416,16 @@ void fgb_cpu_clear_bp(fgb_cpu* cpu, uint16_t addr) {
     log_warn("Breakpoint not found: 0x%04X", addr);
 }
 
+int fgb_cpu_get_bp_at(const fgb_cpu* cpu, uint16_t addr) {
+    for (size_t i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
+        if (cpu->breakpoints[i] == addr) {
+            return (int)i;
+        }
+	}
+
+    return -1;
+}
+
 void fgb_cpu_set_bp_callback(fgb_cpu* cpu, fgb_cpu_bp_callback callback) {
     cpu->bp_callback = callback;
 }

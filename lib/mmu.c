@@ -72,7 +72,7 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
 
     // External RAM Bank (>= 0xA000)
     if (addr < 0xC000) {
-        log_error("External RAM Banks not implemented");
+        fgb_cart_write(mmu->cart, addr, value);
         return;
     }
 
@@ -137,8 +137,7 @@ static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
 
     // External RAM Bank (>= 0xA000)
     if (addr < 0xC000) {
-        log_error("External RAM Banks not implemented");
-        return 0xAA; // Return a default value
+        return fgb_cart_read(mmu->cart, addr);
     }
 
     // WRAM (>= 0xC000)

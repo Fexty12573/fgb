@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define FGB_CART_MAX_ROM_BANKS 256
+#define FGB_CART_MAX_RAM_BANKS 16
+#define FGB_CART_ROM_BANK_SIZE 0x4000
+#define FGB_CART_RAM_BANK_SIZE 0x2000
 
 enum fgb_cart_type {
     CART_TYPE_ROM_ONLY                       = 0x00,
@@ -83,13 +87,21 @@ typedef struct fgb_cart_header {
 typedef struct fgb_cart {
     fgb_cart_header header;
     uint8_t* rom;
+    uint8_t* ram;
     size_t rom_size;
+    uint8_t rom_bank;
+    uint8_t ram_bank;
+	uint8_t* rom_banks[FGB_CART_MAX_ROM_BANKS];
+    uint8_t* ram_banks[FGB_CART_MAX_RAM_BANKS];
+	bool ram_enabled;
+	uint8_t(*read)(const struct fgb_cart* cart, uint16_t addr);
+	void(*write)(struct fgb_cart* cart, uint16_t addr, uint8_t value);
 } fgb_cart;
 
 fgb_cart* fgb_cart_load(const uint8_t* data, size_t size);
 void fgb_cart_destroy(fgb_cart* cart);
 
 uint8_t fgb_cart_read(const fgb_cart* cart, uint16_t addr);
-void fgb_cart_write(const fgb_cart* cart, uint16_t addr, uint8_t value);
+void fgb_cart_write(fgb_cart* cart, uint16_t addr, uint8_t value);
 
 #endif // FGB_CART_H

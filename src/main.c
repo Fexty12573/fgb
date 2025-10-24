@@ -39,6 +39,7 @@ struct app {
     uint16_t disasm_addr;
     char disasm_buffer[DISASM_LINES][64];
     char* disasm_buffer_ptrs[DISASM_LINES];
+    uint16_t disasm_addrs[DISASM_LINES];
 };
 
 struct app g_app = {
@@ -57,7 +58,10 @@ struct app g_app = {
 
 static void set_disasm_addr(uint16_t addr) {
     g_app.disasm_addr = addr;
-    fgb_cpu_disassemble_to(g_app.emu->cpu, g_app.disasm_addr, DISASM_LINES, g_app.disasm_buffer_ptrs);
+    for (int i = 0; i < DISASM_LINES; i++) {
+        g_app.disasm_addrs[i] = addr;
+        addr = fgb_cpu_disassemble_one(g_app.emu->cpu, addr, g_app.disasm_buffer_ptrs[i], sizeof(*g_app.disasm_buffer));
+	}
 }
 
 static void on_breakpoint(fgb_cpu* cpu, size_t bp, uint16_t addr) {
@@ -291,8 +295,43 @@ static void render_debug_options(void) {
         set_disasm_addr(g_app.emu->cpu->regs.pc);
     }
 
-    for (int i = 0; i < DISASM_LINES; i++) {
-        igText("%s", g_app.disasm_buffer_ptrs[i]);
+    if (igBeginTable("Disassembly Table", 4, ImGuiTableFlags_BordersOuter | ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0, 0 }, 0.0f)) {
+        for (int i = 0; i < DISASM_LINES; i++) {
+            igPushID_Int(i);
+
+            igTableNextColumn();
+
+			const uint16_t addr = g_app.disasm_addrs[i];
+            bool selected = fgb_cpu_get_bp_at(g_app.emu->cpu, addr) != -1;
+            if (igCheckbox("##breakpoint", &selected)) {
+	            if (selected) {
+                    fgb_cpu_set_bp(g_app.emu->cpu, addr);
+                    log_info("Breakpoint set at 0x%04X", addr);
+                } else {
+                    fgb_cpu_clear_bp(g_app.emu->cpu, addr);
+                    log_info("Breakpoint cleared at 0x%04X", addr);
+				}
+            }
+
+            igTableNextColumn();
+
+            if (g_app.emu->cpu->regs.pc == addr) {
+                igTextUnformatted("->", NULL);
+            } else {
+                igTextUnformatted("  ", NULL);
+			}
+
+            igTableNextColumn();
+
+			igText("0x%04X", addr);
+
+            igTableNextColumn();
+
+            igTextUnformatted(g_app.disasm_buffer_ptrs[i], NULL);
+
+            igPopID();
+        }
+		igEndTable();
     }
 
     igEndChild();

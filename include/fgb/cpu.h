@@ -115,6 +115,7 @@ void fgb_cpu_disassemble_to(const fgb_cpu* cpu, uint16_t addr, int count, char**
 uint16_t fgb_cpu_disassemble_one(const fgb_cpu* cpu, uint16_t addr, char* dest, size_t dest_size);
 void fgb_cpu_set_bp(fgb_cpu* cpu, uint16_t addr);
 void fgb_cpu_clear_bp(fgb_cpu* cpu, uint16_t addr);
+int fgb_cpu_get_bp_at(const fgb_cpu* cpu, uint16_t addr);
 void fgb_cpu_set_bp_callback(fgb_cpu* cpu, fgb_cpu_bp_callback callback);
 
 #endif // FGB_CPU_H
