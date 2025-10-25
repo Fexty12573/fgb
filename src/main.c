@@ -29,6 +29,7 @@ struct app {
     thrd_t emu_thread;
     bool running;
     bool display_screen;
+    bool emulate;
     int block_to_display;
     double render_framerate;
     double emu_framerate;
@@ -46,6 +47,7 @@ struct app g_app = {
     .emu = NULL,
     .running = true,
     .display_screen = true,
+	.emulate = true,
     .block_to_display = 0,
     .render_framerate = 0.0,
     .emu_framerate = 0.0,
@@ -55,6 +57,10 @@ struct app g_app = {
     .disasm_buffer = { {0} },
     .disasm_buffer_ptrs = { NULL },
 };
+
+static int emu_run(void* arg);
+static bool emu_start(void);
+static bool emu_stop(void);
 
 static void set_disasm_addr(uint16_t addr) {
     g_app.disasm_addr = addr;
@@ -454,6 +460,21 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     }
 }
 
+static void drop_callback(GLFWwindow* window, int count, const char** paths) {
+    (void)window;
+    if (count != 1) {
+		log_warn("Please drop a single ROM file");
+        return;
+	}
+
+    emu_stop();
+    fgb_emu_destroy(g_app.emu);
+
+	log_info("Loading ROM: %s", paths[0]);
+	g_app.emu = emu_init(paths[0]);
+	emu_start();
+}
+
 static void gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
     switch (severity) {
     case GL_DEBUG_SEVERITY_HIGH:
@@ -506,7 +527,7 @@ static int emu_run(void* arg) {
     struct timespec ts = { 0 };
     double error = 0.0;
     
-    while (g_app.running) {
+    while (g_app.running && g_app.emulate) {
         const double start_time = glfwGetTime();
 
         fgb_cpu_step(emu->cpu);
@@ -528,6 +549,27 @@ static int emu_run(void* arg) {
     }
 
     return 0;
+}
+
+bool emu_start(void) {
+    if (thrd_create(&g_app.emu_thread, emu_run, g_app.emu) != thrd_success) {
+        log_error("Could not create emulator thread. Exiting");
+		return false;
+    }
+
+	g_app.emulate = true;
+    return true;
+}
+
+bool emu_stop(void) {
+    g_app.emulate = false;
+    int res = 0;
+    if (thrd_join(g_app.emu_thread, &res) != thrd_success) {
+        log_error("Could not join emulator thread. Exiting");
+		return false;
+	}
+
+    return true;
 }
 
 int main(int argc, char** argv) {
@@ -610,11 +652,11 @@ int main(int argc, char** argv) {
     g_app.emu->ppu->obj_palette = obj_pal;
 
     glfwSetKeyCallback(window, key_callback);
+	glfwSetDropCallback(window, drop_callback);
 
-    if (thrd_create(&g_app.emu_thread, emu_run, g_app.emu) != thrd_success) {
-        log_error("Could not create emulator thread. Exiting");
+    if (!emu_start()) {
         return 1;
-    }
+	}
 
     double last_time = glfwGetTime();
     double last_title_update = last_time;
