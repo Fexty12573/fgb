@@ -22,6 +22,7 @@ typedef struct fgb_instruction {
     uint8_t opcode;
     uint8_t operand_size; // 0, 1, or 2 bytes
     uint8_t cycles; // Number of cycles the instruction takes to execute
+	uint8_t alt_cycles; // Number of cycles for alternate paths (e.g., taken branches)
     union {
         void* exec;
         fgb_instruction_exec_0 exec_0;

@@ -156,6 +156,7 @@ typedef struct fgb_ppu {
     } debug;
 
     bool dma_active; // DMA transfer is active
+	uint8_t dma; // DMA register value
     uint16_t dma_addr; // Address for DMA transfer
     int dma_bytes; // Number of bytes transferred in the current DMA operation
     int dma_cycles;

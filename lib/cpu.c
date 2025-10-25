@@ -227,6 +227,11 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
         }
 
         cycles = instruction->cycles != 255 ? instruction->cycles : fgb_instruction_get_cb_cycles(op8);
+
+        if (cpu->use_alt_cycles && instruction->alt_cycles != 0) {
+            cycles = instruction->alt_cycles;
+			cpu->use_alt_cycles = false; // Reset after use
+		}
     }
 
     // Update the timer
@@ -387,7 +392,7 @@ uint16_t fgb_cpu_disassemble_one(const fgb_cpu* cpu, uint16_t addr, char* dest, 
         break;
     default:
         log_error("Invalid operand size: %d", instruction->operand_size);
-        return;
+        break;
     }
 
     return addr + instruction->operand_size + 1; // +1 for the opcode byte
@@ -876,24 +881,28 @@ void fgb_jr(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
 void fgb_jr_nz(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
     if (!cpu->regs.flags.z) {
         cpu->regs.pc += (int8_t)operand;
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_jr_z(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
     if (cpu->regs.flags.z) {
         cpu->regs.pc += (int8_t)operand;
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_jr_nc(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
     if (!cpu->regs.flags.c) {
         cpu->regs.pc += (int8_t)operand;
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_jr_c(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
     if (cpu->regs.flags.c) {
         cpu->regs.pc += (int8_t)operand;
+        cpu->use_alt_cycles = true;
     }
 }
 
@@ -1546,24 +1555,28 @@ void fgb_jp_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
 void fgb_jp_z_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
     if (cpu->regs.flags.z) {
         cpu->regs.pc = operand;
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_jp_c_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
     if (cpu->regs.flags.c) {
         cpu->regs.pc = operand;
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_jp_nz_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
     if (!cpu->regs.flags.z) {
         cpu->regs.pc = operand;
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_jp_nc_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
     if (!cpu->regs.flags.c) {
         cpu->regs.pc = operand;
+        cpu->use_alt_cycles = true;
     }
 }
 
@@ -1578,24 +1591,28 @@ void fgb_call_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) 
 void fgb_call_z_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
     if (cpu->regs.flags.z) {
         fgb_call(cpu, operand);
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_call_c_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
     if (cpu->regs.flags.c) {
         fgb_call(cpu, operand);
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_call_nz_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
     if (!cpu->regs.flags.z) {
         fgb_call(cpu, operand);
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_call_nc_imm16(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
     if (!cpu->regs.flags.c) {
         fgb_call(cpu, operand);
+        cpu->use_alt_cycles = true;
     }
 }
 
@@ -1606,24 +1623,28 @@ void fgb_ret(fgb_cpu* cpu, const fgb_instruction* ins) {
 void fgb_ret_z(fgb_cpu* cpu, const fgb_instruction* ins) {
     if (cpu->regs.flags.z) {
         fgb_ret_(cpu);
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_ret_c(fgb_cpu* cpu, const fgb_instruction* ins) {
     if (cpu->regs.flags.c) {
         fgb_ret_(cpu);
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_ret_nz(fgb_cpu* cpu, const fgb_instruction* ins) {
     if (!cpu->regs.flags.z) {
         fgb_ret_(cpu);
+        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_ret_nc(fgb_cpu* cpu, const fgb_instruction* ins) {
     if (!cpu->regs.flags.c) {
         fgb_ret_(cpu);
+        cpu->use_alt_cycles = true;
     }
 }
 

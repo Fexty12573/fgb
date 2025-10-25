@@ -78,6 +78,8 @@ typedef struct fgb_cpu {
     fgb_timer timer;
     fgb_io io;
     fgb_ppu* ppu;
+
+    bool use_alt_cycles;
     
     bool ime;
     bool halted;
