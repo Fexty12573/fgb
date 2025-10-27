@@ -92,7 +92,6 @@ static fgb_emu* emu_init(const char* rom_path) {
     const size_t size = file_size(f);
     uint8_t* data = malloc(size);
     fread(data, 1, size, f);
-
     fclose(f);
 
     fgb_emu* emu = fgb_emu_create(data, size);
@@ -265,6 +264,16 @@ static void render_line_sprites(void) {
 static void render_debug_options(void) {
     igBegin("Debug Options", NULL, ImGuiWindowFlags_None);
 
+    if (igButton("Reset", (ImVec2) { 0, 0 })) {
+        fgb_emu_reset(g_app.emu);
+    }
+
+    if (igButton("Reset Paused", (ImVec2) { 0, 0 })) {
+        fgb_emu_reset(g_app.emu);
+        g_app.emu->cpu->debugging = true;
+        set_disasm_addr(g_app.emu->cpu->regs.pc);
+	}
+
     if (igCheckbox("Trace", &g_app.emu->cpu->trace)) {
         log_info("CPU trace %s", g_app.emu->cpu->trace ? "enabled" : "disabled");
     }
@@ -296,7 +305,7 @@ static void render_debug_options(void) {
 
     igBeginChild_Str("Disassembly", (ImVec2) { 0, 0 }, ImGuiChildFlags_Borders, ImGuiWindowFlags_None);
 
-    if (igInputScalar("Address", ImGuiDataType_U16, &g_app.disasm_addr, NULL, NULL, "0x%04X", ImGuiInputTextFlags_CharsHexadecimal)) {
+    if (igInputScalar("Address", ImGuiDataType_U16, &g_app.disasm_addr, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal)) {
         set_disasm_addr(g_app.disasm_addr);
     }
 

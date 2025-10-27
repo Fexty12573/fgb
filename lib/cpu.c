@@ -129,6 +129,8 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
     for (int i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
         cpu->breakpoints[i] = FGB_BP_ADDR_NONE;
     }
+
+    fgb_timer_reset(&cpu->timer);
 }
 
 void fgb_cpu_step(fgb_cpu* cpu) {

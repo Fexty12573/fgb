@@ -168,6 +168,7 @@ typedef struct fgb_ppu {
 fgb_ppu* fgb_ppu_create(void);
 void fgb_ppu_destroy(fgb_ppu* ppu);
 void fgb_ppu_set_cpu(fgb_ppu* ppu, struct fgb_cpu* cpu);
+void fgb_ppu_reset(fgb_ppu* ppu);
 
 const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu);
 void fgb_ppu_lock_buffer(fgb_ppu* ppu);

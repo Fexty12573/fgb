@@ -30,6 +30,7 @@ typedef struct fgb_timer {
 
 void fgb_timer_init(fgb_timer* timer, struct fgb_cpu* cpu);
 void fgb_timer_tick(fgb_timer* timer);
+void fgb_timer_reset(fgb_timer* timer);
 
 void fgb_timer_write(fgb_timer* timer, uint16_t addr, uint8_t value);
 uint8_t fgb_timer_read(const fgb_timer* timer, uint16_t addr);

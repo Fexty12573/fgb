@@ -58,6 +58,41 @@ void fgb_ppu_set_cpu(fgb_ppu* ppu, fgb_cpu* cpu) {
     ppu->cpu = cpu;
 }
 
+void fgb_ppu_reset(fgb_ppu* ppu) {
+    memset(ppu->vram, 0, sizeof(ppu->vram));
+    memset(ppu->oam, 0, sizeof(ppu->oam));
+    memset(ppu->framebuffers, 0, sizeof(ppu->framebuffers));
+    memset(ppu->line_sprites, 0, sizeof(ppu->line_sprites));
+
+    ppu->back_buffer = 0;
+    ppu->mode_cycles = 0;
+    ppu->frame_cycles = 0;
+    ppu->pixels_drawn = 0;
+    ppu->sprite_count = 0;
+
+    ppu->oam_scan_done = false;
+    ppu->frames_rendered = 0;
+    ppu->lcd_control.value = 0x00;
+    ppu->ly = 0;
+    ppu->lyc = 0;
+    ppu->stat.value = 0x00;
+    ppu->scroll.x = 0;
+    ppu->scroll.y = 0;
+    ppu->window_pos.x = 0;
+    ppu->window_pos.y = 0;
+    ppu->bgp.value = 0x00;
+    ppu->obp[0].value = 0x00;
+    ppu->obp[1].value = 0x00;
+    ppu->debug.hide_bg = false;
+    ppu->debug.hide_sprites = false;
+    ppu->debug.hide_window = false;
+    ppu->dma_active = false;
+    ppu->dma = 0;
+    ppu->dma_addr = 0;
+    ppu->dma_bytes = 0;
+	ppu->dma_cycles = 0;
+}
+
 const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu) {
     return ppu->framebuffers[(ppu->back_buffer + PPU_FRAMEBUFFER_COUNT - 1) % PPU_FRAMEBUFFER_COUNT];
 }

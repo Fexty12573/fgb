@@ -38,6 +38,13 @@ void fgb_timer_tick(fgb_timer* timer) {
     }
 }
 
+void fgb_timer_reset(fgb_timer* timer) {
+    timer->divider = 0xAC00;
+    timer->counter = 0;
+    timer->modulo = 0;
+	timer->control = 0;
+}
+
 void fgb_timer_write(fgb_timer* timer, uint16_t addr, uint8_t value) {
 	const uint16_t div_bit = div_bit_table[timer->clk_sel];
 
