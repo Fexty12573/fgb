@@ -83,6 +83,8 @@ typedef struct fgb_cpu {
     
     bool ime;
     bool halted;
+    bool ei_scheduled;
+    bool irq_serviced;
 
     bool trace;
     int frames;

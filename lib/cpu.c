@@ -25,7 +25,7 @@ static const struct fgb_init_value fgb_init_table[] = {
     { 0xFF00, 0xCF }, // P1
     { 0xFF01, 0x00 }, // SB
     { 0xFF02, 0x7E }, // SC
-    { 0xFF04, 0x18 }, // DIV
+    { 0xFF04, 0xAB }, // DIV
     { 0xFF05, 0x00 }, // TIMA
     { 0xFF06, 0x00 }, // TMA
     { 0xFF07, 0xF8 }, // TAC
@@ -180,6 +180,12 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
     // the caller isn't blocked
     int cycles = FGB_CYCLES_PER_FRAME;
 
+	// Enable interrupts if EI was just executed
+    if (cpu->ei_scheduled) {
+        cpu->ime = true;
+        cpu->ei_scheduled = false;
+	}
+
     if (!cpu->halted) {
         const uint16_t addr = cpu->regs.pc; // Need to store it here in case of a jump
         const uint8_t opcode = fgb_cpu_fetch(cpu);
@@ -211,7 +217,6 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
         }
 
         if (cpu->trace) {
-            
             switch (instruction->operand_size) {
             case 0:
                 log_info("0x%04X: %s", addr, instruction->fmt_0(instruction));
@@ -243,6 +248,15 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
 
     // Handle interrupts
     fgb_cpu_handle_interrupts(cpu);
+
+    if (cpu->irq_serviced) {
+		cycles += 20; // Interrupt servicing takes an additional 5 M-cycles (20 T-cycles)
+		cpu->irq_serviced = false;
+
+        for (int i = 0; i < 20; i++) {
+            fgb_timer_tick(&cpu->timer);
+		}
+    }
 
     // Update PPU
     fgb_ppu_tick(cpu->ppu, cycles);
@@ -378,6 +392,11 @@ uint16_t fgb_cpu_disassemble_one(const fgb_cpu* cpu, uint16_t addr, char* dest, 
     const uint8_t opcode = fgb_mmu_read_u8(cpu, addr);
     const fgb_instruction* instruction = fgb_instruction_get(opcode);
     assert(instruction->opcode == opcode);
+
+    if (dest == NULL || dest_size == 0) {
+        return addr + instruction->operand_size + 1;
+	}
+
     uint8_t op8 = 0;
     uint16_t op16 = 0;
     switch (instruction->operand_size) {
@@ -474,17 +493,21 @@ static inline bool fgb_cpu_handle_irq(fgb_cpu* cpu, enum fgb_cpu_interrupt irq) 
     // Interrupt is only serviced if IME is set
     if (cpu->ime) {
         log_trace("Handling interrupt: %d", irq);
+
+		cpu->ime = false; // IME is cleared before servicing
         fgb_call(cpu, fgb_interrupt_vector[irq]);
         cpu->interrupt.flags &= ~irq; // Clear the interrupt flag
+
+		cpu->irq_serviced = true; // Indicate that an IRQ was serviced
     }
 
-    cpu->ime = false; // Disable interrupts after handling
     cpu->halted = false; // Clear halted state
 
     return true;
 }
 
 void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
+	cpu->irq_serviced = false;
     if (fgb_cpu_handle_irq(cpu, IRQ_VBLANK)) return;
     if (fgb_cpu_handle_irq(cpu, IRQ_LCD)) return;
     if (fgb_cpu_handle_irq(cpu, IRQ_TIMER)) return;
@@ -1651,7 +1674,8 @@ void fgb_ret_nc(fgb_cpu* cpu, const fgb_instruction* ins) {
 }
 
 void fgb_ei(fgb_cpu* cpu, const fgb_instruction* ins) {
-    cpu->ime = true;
+    // The effect of EI is delayed by one instruction
+	cpu->ei_scheduled = true;
 }
 
 void fgb_di(fgb_cpu* cpu, const fgb_instruction* ins) {

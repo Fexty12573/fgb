@@ -453,6 +453,20 @@ static void render_debug_options(void) {
             igTableSetColumnIndex(3);
         	igText("HL: %04X", cpu->regs.hl);
 
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0);
+			igTextUnformatted("SP", NULL);
+
+			igTableSetColumnIndex(1);
+			igInputScalar("##SP", ImGuiDataType_U16, &regs->sp, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0);
+			igTextUnformatted("PC", NULL);
+
+            igTableSetColumnIndex(1);
+			igInputScalar("##PC", ImGuiDataType_U16, &regs->pc, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
+
             igEndTable();
         }
 
@@ -499,8 +513,9 @@ static void render_debug_options(void) {
         igTableNextRow(0, 0);
         igTableSetColumnIndex(0);
 
-        if (igBeginTable("timer_tbl", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0.0f, 0 }, 0.0f)) {
+        if (igBeginTable("timer_tbl", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0.0f, 0 }, 0.0f)) {
 			igTableSetupColumn("DIV", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("DIV Reg", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
 			igTableSetupColumn("TIMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
 			igTableSetupColumn("TMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
 			igTableSetupColumn("TAC", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
@@ -508,8 +523,12 @@ static void render_debug_options(void) {
             igTableHeadersRow();
 			igTableNextRow(0, 0);
 
+			uint8_t divreg = (timer->divider >> 8) & 0xFF;
+
             igTableNextColumn();
             igInputScalar("##div", ImGuiDataType_U16, &timer->divider, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            igTableNextColumn();
+			igInputScalar("##divreg", ImGuiDataType_U8, &divreg, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
 			igInputScalar("##tima", ImGuiDataType_U8, &timer->counter, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
@@ -518,6 +537,8 @@ static void render_debug_options(void) {
 			igInputScalar("##tac", ImGuiDataType_U8, &timer->control, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
             igTableNextColumn();
 			igInputScalar("##reload", ImGuiDataType_U8, &timer->ticks_since_overflow, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+
+			timer->divider = (uint16_t)((uint16_t)divreg << 8) | (timer->divider & 0x00FF);
             
             igEndTable();
         }

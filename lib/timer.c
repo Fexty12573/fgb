@@ -24,8 +24,9 @@ static void fgb_timer_increment(fgb_timer* timer);
 
 void fgb_timer_init(fgb_timer* timer, fgb_cpu* cpu) {
     memset(timer, 0, sizeof(fgb_timer));
-    timer->divider = 0xAC00; // Initial value for the divider register
     timer->cpu = cpu;
+
+    fgb_timer_reset(timer);
 }
 
 void fgb_timer_tick(fgb_timer* timer) {
@@ -52,7 +53,7 @@ void fgb_timer_tick(fgb_timer* timer) {
 }
 
 void fgb_timer_reset(fgb_timer* timer) {
-    timer->divider = 0xAC00;
+    timer->divider = 0xAB00;
     timer->counter = 0;
     timer->modulo = 0;
 	timer->control = 0;

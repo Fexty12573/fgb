@@ -90,7 +90,7 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
     }
 
     // OAM (>= 0xFE00)
-    if (addr < 0xFE9F) {
+    if (addr < 0xFEA0) {
         fgb_ppu_write_oam(mmu->ppu, addr - 0xFE00, value);
         return;
     }
