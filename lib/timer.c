@@ -36,6 +36,19 @@ void fgb_timer_tick(fgb_timer* timer) {
     if ((prev_div & div_bit) != 0 && (timer->divider & div_bit) == 0 && timer->enable) {
         fgb_timer_increment(timer);
     }
+
+    if (timer->overflow) {
+        timer->ticks_since_overflow++;
+
+        if (timer->ticks_since_overflow == 4) {
+            fgb_cpu_request_interrupt(timer->cpu, IRQ_TIMER);
+        } else if (timer->ticks_since_overflow == 5) {
+            timer->counter = timer->modulo;
+        } else if (timer->ticks_since_overflow == 6) {
+            timer->overflow = false;
+            timer->ticks_since_overflow = 0;
+		}
+    }
 }
 
 void fgb_timer_reset(fgb_timer* timer) {
@@ -60,11 +73,21 @@ void fgb_timer_write(fgb_timer* timer, uint16_t addr, uint8_t value) {
         break;
 
     case TIMER_TIMA_ADDRESS:
-        timer->counter = value;
+		// Tick 5 is when TIMA is reloaded with TMA, so ignore writes to TIMA then
+        if (timer->ticks_since_overflow != 5) {
+			timer->counter = value;
+            timer->overflow = false;
+			timer->ticks_since_overflow = 0;
+        }
         break;
 
     case TIMER_TMA_ADDRESS:
         timer->modulo = value;
+
+		// Tick 5 is when TIMA is reloaded with TMA so we write TMA directly to TIMA.
+        if (timer->ticks_since_overflow == 5) {
+            timer->counter = value;
+        }
         break;
 
     case TIMER_TAC_ADDRESS: {
@@ -108,8 +131,7 @@ void fgb_timer_increment(fgb_timer* timer) {
     timer->counter++;
 
     if (timer->counter == 0x00) { // Overflow
-        timer->counter = timer->modulo;
-
-        fgb_cpu_request_interrupt(timer->cpu, IRQ_TIMER);
+        timer->ticks_since_overflow = 0;
+        timer->overflow = true;
     }
 }

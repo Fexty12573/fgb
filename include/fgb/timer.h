@@ -1,6 +1,7 @@
 #ifndef FGB_TIMER_H
 #define FGB_TIMER_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 
@@ -12,17 +13,23 @@ enum fgb_timer_clock {
 };
 
 typedef struct fgb_timer {
-    uint16_t divider;
-    uint8_t counter;
-    uint8_t modulo;
+	uint16_t divider; // DIV
+	uint8_t counter; // TIMA
+    uint8_t modulo; // TMA
     union {
-        uint8_t control;
+		uint8_t control; // TAC
         struct {
             uint8_t clk_sel : 2; // See fgb_timer_clock
             uint8_t enable : 1;
             uint8_t : 5;
         };
     };
+
+	// After 4 ticks following an overflow, the timer interrupt is requested
+	// After 5 ticks, TIMA is reloaded with TMA
+	// After 6 ticks, normal operation resumes
+    uint8_t ticks_since_overflow;
+    bool overflow;
 
     struct fgb_cpu* cpu;
 } fgb_timer;
