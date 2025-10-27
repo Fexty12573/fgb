@@ -290,13 +290,15 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
         break;
 
     case 0xFF46:
+		ppu->dma = value;
+
         if (ppu->dma_active) {
             log_warn("PPU: DMA transfer already active, ignoring new request");
             return;
         }
 
         ppu->dma_active = true;
-        ppu->dma_addr = value << 8;
+        ppu->dma_addr = (uint16_t)value << 8;
         ppu->dma_cycles = 0;
         ppu->dma_bytes = 0;
 
@@ -349,6 +351,9 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
     case 0xFF45:
         return ppu->lyc;
 
+    case 0xFF46:
+		return ppu->dma;
+
     case 0xFF47:
         return ppu->bgp.value;
 
@@ -392,19 +397,19 @@ uint8_t fgb_ppu_read_vram(const fgb_ppu* ppu, uint16_t addr) {
 }
 
 void fgb_ppu_write_oam(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
-    if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
-        log_warn("PPU: Attempt to write to OAM during OAM scan");
-        return;
-    }
+    //if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
+    //    log_warn("PPU: Attempt to write to OAM during OAM scan");
+    //    return;
+    //}
 
     ppu->oam[addr] = value;
 }
 
 uint8_t fgb_ppu_read_oam(const fgb_ppu* ppu, uint16_t addr) {
-    if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
-        log_warn("PPU: Attempt to read from OAM during OAM scan");
-        return 0xFF;
-    }
+    //if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
+    //    log_warn("PPU: Attempt to read from OAM during OAM scan");
+    //    return 0xFF;
+    //}
 
     return ppu->oam[addr];
 }
