@@ -61,6 +61,7 @@ struct app g_app = {
 static int emu_run(void* arg);
 static bool emu_start(void);
 static bool emu_stop(void);
+static void configure_cpu(void);
 
 static void set_disasm_addr(uint16_t addr) {
     g_app.disasm_addr = addr;
@@ -78,7 +79,21 @@ static void on_breakpoint(fgb_cpu* cpu, size_t bp, uint16_t addr) {
 }
 
 static void on_step(fgb_cpu* cpu) {
-    set_disasm_addr(cpu->regs.pc);
+    // Behavior depends on where we are stepping from/to.
+	// If we step just outside of the current disassembly view,
+	// we need to update the view, but only so that the current
+    // PC is visible.
+	const uint16_t pc = cpu->regs.pc;
+	const uint16_t last_addr = g_app.disasm_addrs[DISASM_LINES - 1];
+	const uint16_t after_last_addr = fgb_cpu_disassemble_one(cpu, last_addr, NULL, 0);
+
+    if (pc == after_last_addr) {
+	    // Stepped just past the end, shift down
+        set_disasm_addr(g_app.disasm_addrs[1]);
+    } else if (pc < g_app.disasm_addrs[0] || pc > last_addr) {
+        // Stepped outside the current view, reset to PC
+		set_disasm_addr(pc);
+    }
 }
 
 static fgb_emu* emu_init(const char* rom_path) {
@@ -649,6 +664,8 @@ static void drop_callback(GLFWwindow* window, int count, const char** paths) {
 
 	log_info("Loading ROM: %s", paths[0]);
 	g_app.emu = emu_init(paths[0]);
+
+    configure_cpu();
 	emu_start();
 }
 
@@ -749,6 +766,17 @@ bool emu_stop(void) {
     return true;
 }
 
+void configure_cpu(void) {
+    set_disasm_addr(0x100);
+    fgb_cpu_set_bp_callback(g_app.emu->cpu, on_breakpoint);
+    fgb_cpu_set_step_callback(g_app.emu->cpu, on_step);
+
+    ulog_set_quiet(false);
+    ulog_set_level(LOG_DEBUG);
+    fgb_emu_set_log_level(g_app.emu, LOG_DEBUG);
+    g_app.emu->cpu->trace = false;
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         printf("Usage: %s <path/to/rom.gb>\n", argv[0]);
@@ -781,14 +809,7 @@ int main(int argc, char** argv) {
         g_app.disasm_buffer_ptrs[i] = g_app.disasm_buffer[i];
     }
 
-    set_disasm_addr(0x100);
-    fgb_cpu_set_bp_callback(g_app.emu->cpu, on_breakpoint);
-    fgb_cpu_set_step_callback(g_app.emu->cpu, on_step);
-    
-    ulog_set_quiet(false);
-    ulog_set_level(LOG_DEBUG);
-    fgb_emu_set_log_level(g_app.emu, LOG_DEBUG);
-    g_app.emu->cpu->trace = false;
+    configure_cpu();
 
     glDebugMessageCallback(gl_debug_callback, NULL);
 
