@@ -380,6 +380,153 @@ static void render_debug_options(void) {
 
     igPopStyleColor(1);
 
+	fgb_cpu* cpu = g_app.emu->cpu;
+	fgb_cpu_regs* regs = &cpu->regs;
+
+    igSeparatorText("CPU State");
+
+    igPushID_Str("CPU_UI");
+
+    if (igBeginTable("cpu_table", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV, (ImVec2) { 0, 0 }, 0.0f)) {
+        // Left column: registers
+        igTableNextRow(0, 0);
+        igTableSetColumnIndex(0);
+
+        igSeparatorText("Registers");
+        igPushID_Str("Regs");
+        igPushItemWidth(48.0f); // narrow inputs
+
+        if (igBeginTable("regs_left", 4, ImGuiTableFlags_SizingFixedSame, (ImVec2) { 0, 0 }, 0.0f)) {
+            // Row: A / F   | inputs | AF
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0);
+        	igTextUnformatted("A / F", NULL);
+
+            igTableSetColumnIndex(1);
+            igInputScalar("##A", ImGuiDataType_U8, &regs->a, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableSetColumnIndex(2);
+            igInputScalar("##F", ImGuiDataType_U8, &regs->f, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableSetColumnIndex(3);
+        	igText("AF: %04X", cpu->regs.af);
+
+            // Row: B / C   | inputs | BC
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0);
+        	igTextUnformatted("B / C", NULL);
+
+            igTableSetColumnIndex(1);
+            igInputScalar("##B", ImGuiDataType_U8, &regs->b, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableSetColumnIndex(2);
+            igInputScalar("##C", ImGuiDataType_U8, &regs->c, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableSetColumnIndex(3);
+        	igText("BC: %04X", cpu->regs.bc);
+
+            // Row: D / E   | inputs | DE
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0);
+        	igTextUnformatted("D / E", NULL);
+
+            igTableSetColumnIndex(1);
+            igInputScalar("##D", ImGuiDataType_U8, &regs->d, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableSetColumnIndex(2);
+            igInputScalar("##E", ImGuiDataType_U8, &regs->e, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableSetColumnIndex(3);
+        	igText("DE: %04X", cpu->regs.de);
+
+            // Row: H / L   | inputs | HL
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0);
+        	igTextUnformatted("H / L", NULL);
+
+            igTableSetColumnIndex(1);
+            igInputScalar("##H", ImGuiDataType_U8, &regs->h, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableSetColumnIndex(2);
+            igInputScalar("##L", ImGuiDataType_U8, &regs->l, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableSetColumnIndex(3);
+        	igText("HL: %04X", cpu->regs.hl);
+
+            igEndTable();
+        }
+
+        igPopItemWidth();
+        igPopID(); // Regs
+
+        // Right column: flags + misc
+        igTableSetColumnIndex(1);
+
+        igSeparatorText("Flags");
+        igPushID_Str("Flags");
+
+        bool c = regs->flags.c;
+        bool h = regs->flags.h;
+        bool n = regs->flags.n;
+        bool z = regs->flags.z;
+
+        // Put flags in a compact 4-column table
+        if (igBeginTable("flags_tbl", 4, ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0, 0 }, 0.0f)) {
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0); igCheckbox("C", &c);
+            igTableSetColumnIndex(1); igCheckbox("H", &h);
+            igTableSetColumnIndex(2); igCheckbox("N", &n);
+            igTableSetColumnIndex(3); igCheckbox("Z", &z);
+            igEndTable();
+        }
+
+        regs->flags.c = c;
+        regs->flags.h = h;
+        regs->flags.n = n;
+        regs->flags.z = z;
+
+        igPopID(); // Flags
+
+        igSeparatorText("Misc");
+        igCheckbox("IME", &cpu->ime);
+        igCheckbox("Halted", &cpu->halted);
+        igText("IE: %02X", cpu->interrupt.enable);
+        igText("IF: %02X", cpu->interrupt.flags);
+
+        // Timer
+        fgb_timer* timer = &cpu->timer;
+
+        igTableNextRow(0, 0);
+        igTableSetColumnIndex(0);
+
+        if (igBeginTable("timer_tbl", 5, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0.0f, 0 }, 0.0f)) {
+			igTableSetupColumn("DIV", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+			igTableSetupColumn("TIMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+			igTableSetupColumn("TMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+			igTableSetupColumn("TAC", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+			igTableSetupColumn("Reload", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableHeadersRow();
+			igTableNextRow(0, 0);
+
+            igTableNextColumn();
+            igInputScalar("##div", ImGuiDataType_U16, &timer->divider, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            igTableNextColumn();
+			igInputScalar("##tima", ImGuiDataType_U8, &timer->counter, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            igTableNextColumn();
+			igInputScalar("##tma", ImGuiDataType_U8, &timer->modulo, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            igTableNextColumn();
+			igInputScalar("##tac", ImGuiDataType_U8, &timer->control, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igTableNextColumn();
+			igInputScalar("##reload", ImGuiDataType_U8, &timer->ticks_since_overflow, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            
+            igEndTable();
+        }
+
+        igEndTable();
+    }
+
+	igPopID(); // CPU_UI
+
     igEndChild();
 
     if (igIsItemHovered(ImGuiHoveredFlags_None)) {
