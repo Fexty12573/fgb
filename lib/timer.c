@@ -92,13 +92,24 @@ void fgb_timer_write(fgb_timer* timer, uint16_t addr, uint8_t value) {
 
     case TIMER_TAC_ADDRESS: {
 		const bool high = (timer->divider & div_bit) != 0;
+		const bool prev_enable = timer->enable;
+
         timer->control = value;
 
-        // If the previous watched bit is set but the new one isn't, that will
-		// result in a negative edge and thus a timer increment
-        if (timer->enable && high && (timer->divider & div_bit_table[timer->clk_sel]) == 0) {
-            fgb_timer_increment(timer);
-		}
+		// If the timer was previously disabled, no edge can occur
+        if (!prev_enable) {
+            break;
+        }
+
+		// If the previous watched bit is set and either
+        // a) the timer is being disabled or
+		// b) the clock select is changing such that the watched bit is now cleared,
+		// then a falling edge occurs and the timer is incremented
+        if (high) {
+            if (!timer->enable || (timer->divider & div_bit_table[timer->clk_sel]) == 0) {
+                fgb_timer_increment(timer);
+			}
+        }
     } break;
 
     default:
