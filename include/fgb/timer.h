@@ -13,11 +13,11 @@ enum fgb_timer_clock {
 };
 
 typedef struct fgb_timer {
-	uint16_t divider; // DIV
-	uint8_t counter; // TIMA
+    uint16_t divider; // DIV
+    uint8_t counter; // TIMA
     uint8_t modulo; // TMA
     union {
-		uint8_t control; // TAC
+        uint8_t control; // TAC
         struct {
             uint8_t clk_sel : 2; // See fgb_timer_clock
             uint8_t enable : 1;
@@ -25,9 +25,9 @@ typedef struct fgb_timer {
         };
     };
 
-	// After 4 ticks following an overflow, the timer interrupt is requested
-	// After 5 ticks, TIMA is reloaded with TMA
-	// After 6 ticks, normal operation resumes
+    // After 4 ticks following an overflow, the timer interrupt is requested
+    // After 5 ticks, TIMA is reloaded with TMA
+    // After 6 ticks, normal operation resumes
     uint8_t ticks_since_overflow;
     bool overflow;
 

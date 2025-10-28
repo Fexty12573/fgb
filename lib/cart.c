@@ -51,30 +51,30 @@ fgb_cart* fgb_cart_load(const uint8_t* data, size_t size) {
         return NULL;
     }
 
-	const size_t rom_banks = 2ull << cart->header.rom_size;
+    const size_t rom_banks = 2ull << cart->header.rom_size;
 
-	const size_t ram_size_bytes = fgb_get_ram_size_bytes(&cart->header);
+    const size_t ram_size_bytes = fgb_get_ram_size_bytes(&cart->header);
     const size_t ram_banks = ram_size_bytes / FGB_CART_RAM_BANK_SIZE;
 
     if (size < rom_banks * FGB_CART_ROM_BANK_SIZE) {
         log_error("ROM size (%zu bytes) is smaller than expected (%zu bytes), aborting cart load", size, rom_banks * FGB_CART_ROM_BANK_SIZE);
         fgb_cart_destroy(cart);
         return NULL;
-	}
+    }
 
-	switch (cart->header.cartridge_type) {
-	case CART_TYPE_ROM_ONLY:
-		cart->read = fgb_cart_read_rom_only;
+    switch (cart->header.cartridge_type) {
+    case CART_TYPE_ROM_ONLY:
+        cart->read = fgb_cart_read_rom_only;
         cart->write = fgb_cart_write_rom_only;
         break;
-	case CART_TYPE_MBC3_RAM_BATTERY:
-		cart->read = fgb_cart_read_mbc3;
+    case CART_TYPE_MBC3_RAM_BATTERY:
+        cart->read = fgb_cart_read_mbc3;
         cart->write = fgb_cart_write_mbc3;
-		cart->rom_bank = 1; // MBC3 starts with bank 1 selected
+        cart->rom_bank = 1; // MBC3 starts with bank 1 selected
 
         for (size_t i = 0; i < rom_banks; i++) {
-			cart->rom_banks[i] = &cart->rom[i * FGB_CART_ROM_BANK_SIZE];
-		}
+            cart->rom_banks[i] = &cart->rom[i * FGB_CART_ROM_BANK_SIZE];
+        }
 
         if (ram_size_bytes > 0) {
             cart->ram = malloc(ram_size_bytes);
@@ -89,31 +89,31 @@ fgb_cart* fgb_cart_load(const uint8_t* data, size_t size) {
             for (size_t i = 0; i < ram_banks; i++) {
                 cart->ram_banks[i] = &cart->ram[i * FGB_CART_RAM_BANK_SIZE];
             }
-		}
+        }
         break;
-	case CART_TYPE_ROM_RAM:
-	case CART_TYPE_ROM_RAM_BATTERY:
-	case CART_TYPE_MBC1:
-	case CART_TYPE_MBC1_RAM:
-	case CART_TYPE_MBC1_RAM_BATTERY:
-	case CART_TYPE_MBC2:
-	case CART_TYPE_MBC2_BATTERY:
-	case CART_TYPE_MBC3_TIMER_BATTERY:
-	case CART_TYPE_MBC3:
-	case CART_TYPE_MBC3_RAM:
-	case CART_TYPE_MBC3_TIMER_RAM_BATTERY:
-	case CART_TYPE_MBC5:
-	case CART_TYPE_MBC5_RAM:
-	case CART_TYPE_MBC5_RAM_BATTERY:
-	case CART_TYPE_MBC5_RUMBLE:
-	case CART_TYPE_MBC5_RUMBLE_RAM:
-	case CART_TYPE_MBC5_RUMBLE_RAM_BATTERY:
-	case CART_TYPE_HUC3:
-	case CART_TYPE_HUC1_RAM_BATTERY:
-	default:
-		log_warn("Only ROM_ONLY Carts are supported. Game will not work properly");
-		break;
-	}
+    case CART_TYPE_ROM_RAM:
+    case CART_TYPE_ROM_RAM_BATTERY:
+    case CART_TYPE_MBC1:
+    case CART_TYPE_MBC1_RAM:
+    case CART_TYPE_MBC1_RAM_BATTERY:
+    case CART_TYPE_MBC2:
+    case CART_TYPE_MBC2_BATTERY:
+    case CART_TYPE_MBC3_TIMER_BATTERY:
+    case CART_TYPE_MBC3:
+    case CART_TYPE_MBC3_RAM:
+    case CART_TYPE_MBC3_TIMER_RAM_BATTERY:
+    case CART_TYPE_MBC5:
+    case CART_TYPE_MBC5_RAM:
+    case CART_TYPE_MBC5_RAM_BATTERY:
+    case CART_TYPE_MBC5_RUMBLE:
+    case CART_TYPE_MBC5_RUMBLE_RAM:
+    case CART_TYPE_MBC5_RUMBLE_RAM_BATTERY:
+    case CART_TYPE_HUC3:
+    case CART_TYPE_HUC1_RAM_BATTERY:
+    default:
+        log_warn("Only ROM_ONLY Carts are supported. Game will not work properly");
+        break;
+    }
 
     memcpy(cart->rom, data, size);
     cart->rom_size = size;
@@ -145,21 +145,21 @@ uint8_t fgb_compute_header_checksum(const uint8_t* data) {
 }
 
 uint32_t fgb_get_ram_size_bytes(const fgb_cart_header* header) {
-	switch (header->ram_size) {
-	case RAM_SIZE_0:
-		return 0;
-	case RAM_SIZE_8KIB:
+    switch (header->ram_size) {
+    case RAM_SIZE_0:
+        return 0;
+    case RAM_SIZE_8KIB:
         return FGB_CART_RAM_BANK_SIZE * 1;
-	case RAM_SIZE_32KIB:
-		return FGB_CART_RAM_BANK_SIZE * 4;
-	case RAM_SIZE_128KIB:
-		return FGB_CART_RAM_BANK_SIZE * 16;
-	case RAM_SIZE_64KIB:
-		return FGB_CART_RAM_BANK_SIZE * 8;
-	default:
+    case RAM_SIZE_32KIB:
+        return FGB_CART_RAM_BANK_SIZE * 4;
+    case RAM_SIZE_128KIB:
+        return FGB_CART_RAM_BANK_SIZE * 16;
+    case RAM_SIZE_64KIB:
+        return FGB_CART_RAM_BANK_SIZE * 8;
+    default:
         log_warn("Unknown RAM size code: 0x%02X", header->ram_size);
-		return 0;
-	}
+        return 0;
+    }
 }
 
 uint8_t fgb_cart_read_rom_only(const fgb_cart* cart, uint16_t addr) {
@@ -173,18 +173,18 @@ uint8_t fgb_cart_read_mbc3(const fgb_cart* cart, uint16_t addr) {
     }
 
     if (addr < 0x8000) {
-	    // Switchable ROM bank
-		return cart->rom_banks[cart->rom_bank][addr - 0x4000];
+        // Switchable ROM bank
+        return cart->rom_banks[cart->rom_bank][addr - 0x4000];
     }
 
     if (addr >= 0xA000 && addr < 0xC000) {
-	    // Switchable RAM bank
+        // Switchable RAM bank
         if (!cart->ram_enabled || !cart->ram) {
             log_warn("Attempt to read from RAM when RAM is disabled or not present");
             return 0xFF;
         }
 
-		return cart->ram_banks[cart->ram_bank][addr - 0xA000];
+        return cart->ram_banks[cart->ram_bank][addr - 0xA000];
     }
 
     log_warn("Attempt to read from unmapped MBC3 memory at address 0x%04X", addr);
@@ -194,15 +194,15 @@ uint8_t fgb_cart_read_mbc3(const fgb_cart* cart, uint16_t addr) {
 void fgb_cart_write_rom_only(fgb_cart* cart, uint16_t addr, uint8_t value) {
     (void)cart;
     (void)addr;
-	(void)value;
-	log_warn("Attempt to write to ROM_ONLY cart at 0x%04X", addr);
+    (void)value;
+    log_warn("Attempt to write to ROM_ONLY cart at 0x%04X", addr);
 }
 
 void fgb_cart_write_mbc3(fgb_cart* cart, uint16_t addr, uint8_t value) {
     if (addr < 0x2000) {
         // Enable/Disable RAM
-	    cart->ram_enabled = (value & 0x0F) == 0x0A;
-		return;
+        cart->ram_enabled = (value & 0x0F) == 0x0A;
+        return;
     }
 
     if (addr < 0x4000) {
@@ -212,12 +212,12 @@ void fgb_cart_write_mbc3(fgb_cart* cart, uint16_t addr, uint8_t value) {
     }
 
     if (addr < 0x6000) {
-	    // Switch RAM Bank
+        // Switch RAM Bank
         if (value < 4) {
             cart->ram_bank = value;
         } else {
             log_warn("RTC not implemented (%d)", value);
-		}
+        }
 
         return;
     }
@@ -227,6 +227,6 @@ void fgb_cart_write_mbc3(fgb_cart* cart, uint16_t addr, uint8_t value) {
         return;
     }
 
-	log_warn("Attempt to write to unmapped MBC3 memory at address 0x%04X", addr);
+    log_warn("Attempt to write to unmapped MBC3 memory at address 0x%04X", addr);
 }
 

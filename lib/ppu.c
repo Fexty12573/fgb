@@ -90,7 +90,7 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
     ppu->dma = 0;
     ppu->dma_addr = 0;
     ppu->dma_bytes = 0;
-	ppu->dma_cycles = 0;
+    ppu->dma_cycles = 0;
 }
 
 const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu) {
@@ -290,7 +290,7 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
         break;
 
     case 0xFF46:
-		ppu->dma = value;
+        ppu->dma = value;
 
         if (ppu->dma_active) {
             log_warn("PPU: DMA transfer already active, ignoring new request");
@@ -352,7 +352,7 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
         return ppu->lyc;
 
     case 0xFF46:
-		return ppu->dma;
+        return ppu->dma;
 
     case 0xFF47:
         return ppu->bgp.value;
@@ -423,8 +423,8 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
     const int scx = ppu->scroll.x;
     const int scy = ppu->scroll.y;
 
-	const int wx = ppu->window_pos.x >= 7 ? ppu->window_pos.x - 7 : 0;
-	const int wy = ppu->window_pos.y;
+    const int wx = ppu->window_pos.x >= 7 ? ppu->window_pos.x - 7 : 0;
+    const int wy = ppu->window_pos.y;
 
     for (int i = 0; i < count; i++) {
         const int sx = ppu->pixels_drawn + i;
@@ -434,10 +434,10 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
         }
 
         const int bx = (sx + scx) & 0xFF;
-		const int by = (sy + scy) & 0xFF;
+        const int by = (sy + scy) & 0xFF;
 
-		const int tile_x = (bx / TILE_WIDTH) % TILE_MAP_WIDTH;
-		const int tile_y = (by / TILE_HEIGHT) % TILE_MAP_HEIGHT;
+        const int tile_x = (bx / TILE_WIDTH) % TILE_MAP_WIDTH;
+        const int tile_y = (by / TILE_HEIGHT) % TILE_MAP_HEIGHT;
 
         // Check if there is a sprite at this position
         fgb_sprite* sprite = NULL;
@@ -477,14 +477,14 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
         }
 
         // Get the pixel from the tile
-		const uint8_t pixel_x = bx % TILE_WIDTH;
-		const uint8_t pixel_y = by % TILE_HEIGHT;
+        const uint8_t pixel_x = bx % TILE_WIDTH;
+        const uint8_t pixel_y = by % TILE_HEIGHT;
         uint8_t bg_pixel = fgb_tile_get_pixel(tile, pixel_x, pixel_y);
         const int screen_index = sy * SCREEN_WIDTH + sx;
 
         if (ppu->lcd_control.wnd_enable && sx >= wx && sy >= wy) {
-			const int rel_window_x = sx - wx;
-			const int rel_window_y = sy - wy;
+            const int rel_window_x = sx - wx;
+            const int rel_window_y = sy - wy;
             const uint8_t window_x = rel_window_x % TILE_WIDTH;
             const uint8_t window_y = rel_window_y % TILE_HEIGHT;
             const int window_tile_x = (rel_window_x / TILE_WIDTH) % TILE_MAP_WIDTH;
@@ -496,14 +496,14 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
                 bg_pixel = fgb_tile_get_pixel(window_tile, window_x, window_y);
             } else {
                 log_error("PPU: Failed to get window tile data for tile ID %d", window_tile_id);
-			}
+            }
         }
 
         if (!sprite || ppu->debug.hide_sprites) {
             if (ppu->debug.hide_bg) {
                 framebuffer[screen_index] = 0x00000000; // Black
             } else if (!ppu->lcd_control.bg_wnd_enable) {
-				framebuffer[screen_index] = 0xFFFFFFFF; // White
+                framebuffer[screen_index] = 0xFFFFFFFF; // White
             } else {
                 // No sprite at this position, just draw the background pixel
                 framebuffer[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);

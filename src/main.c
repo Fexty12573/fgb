@@ -47,7 +47,7 @@ struct app g_app = {
     .emu = NULL,
     .running = true,
     .display_screen = true,
-	.emulate = true,
+    .emulate = true,
     .block_to_display = 0,
     .render_framerate = 0.0,
     .emu_framerate = 0.0,
@@ -68,7 +68,7 @@ static void set_disasm_addr(uint16_t addr) {
     for (int i = 0; i < DISASM_LINES; i++) {
         g_app.disasm_addrs[i] = addr;
         addr = fgb_cpu_disassemble_one(g_app.emu->cpu, addr, g_app.disasm_buffer_ptrs[i], sizeof(*g_app.disasm_buffer));
-	}
+    }
 }
 
 static void on_breakpoint(fgb_cpu* cpu, size_t bp, uint16_t addr) {
@@ -80,19 +80,19 @@ static void on_breakpoint(fgb_cpu* cpu, size_t bp, uint16_t addr) {
 
 static void on_step(fgb_cpu* cpu) {
     // Behavior depends on where we are stepping from/to.
-	// If we step just outside of the current disassembly view,
-	// we need to update the view, but only so that the current
+    // If we step just outside of the current disassembly view,
+    // we need to update the view, but only so that the current
     // PC is visible.
-	const uint16_t pc = cpu->regs.pc;
-	const uint16_t last_addr = g_app.disasm_addrs[DISASM_LINES - 1];
-	const uint16_t after_last_addr = fgb_cpu_disassemble_one(cpu, last_addr, NULL, 0);
+    const uint16_t pc = cpu->regs.pc;
+    const uint16_t last_addr = g_app.disasm_addrs[DISASM_LINES - 1];
+    const uint16_t after_last_addr = fgb_cpu_disassemble_one(cpu, last_addr, NULL, 0);
 
     if (pc == after_last_addr) {
-	    // Stepped just past the end, shift down
+        // Stepped just past the end, shift down
         set_disasm_addr(g_app.disasm_addrs[1]);
     } else if (pc < g_app.disasm_addrs[0] || pc > last_addr) {
         // Stepped outside the current view, reset to PC
-		set_disasm_addr(pc);
+        set_disasm_addr(pc);
     }
 }
 
@@ -287,7 +287,7 @@ static void render_debug_options(void) {
         fgb_emu_reset(g_app.emu);
         g_app.emu->cpu->debugging = true;
         set_disasm_addr(g_app.emu->cpu->regs.pc);
-	}
+    }
 
     if (igCheckbox("Trace", &g_app.emu->cpu->trace)) {
         log_info("CPU trace %s", g_app.emu->cpu->trace ? "enabled" : "disabled");
@@ -360,16 +360,16 @@ static void render_debug_options(void) {
 
             igTableNextColumn();
 
-			const uint16_t addr = g_app.disasm_addrs[i];
+            const uint16_t addr = g_app.disasm_addrs[i];
             bool selected = fgb_cpu_get_bp_at(g_app.emu->cpu, addr) != -1;
             if (igCheckbox("##breakpoint", &selected)) {
-	            if (selected) {
+                if (selected) {
                     fgb_cpu_set_bp(g_app.emu->cpu, addr);
                     log_info("Breakpoint set at 0x%04X", addr);
                 } else {
                     fgb_cpu_clear_bp(g_app.emu->cpu, addr);
                     log_info("Breakpoint cleared at 0x%04X", addr);
-				}
+                }
             }
 
             igTableNextColumn();
@@ -378,11 +378,11 @@ static void render_debug_options(void) {
                 igTextUnformatted("->", NULL);
             } else {
                 igTextUnformatted("  ", NULL);
-			}
+            }
 
             igTableNextColumn();
 
-			igText("0x%04X", addr);
+            igText("0x%04X", addr);
 
             igTableNextColumn();
 
@@ -390,13 +390,13 @@ static void render_debug_options(void) {
 
             igPopID();
         }
-		igEndTable();
+        igEndTable();
     }
 
     igPopStyleColor(1);
 
-	fgb_cpu* cpu = g_app.emu->cpu;
-	fgb_cpu_regs* regs = &cpu->regs;
+    fgb_cpu* cpu = g_app.emu->cpu;
+    fgb_cpu_regs* regs = &cpu->regs;
 
     igSeparatorText("CPU State");
 
@@ -415,7 +415,7 @@ static void render_debug_options(void) {
             // Row: A / F   | inputs | AF
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
-        	igTextUnformatted("A / F", NULL);
+            igTextUnformatted("A / F", NULL);
 
             igTableSetColumnIndex(1);
             igInputScalar("##A", ImGuiDataType_U8, &regs->a, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
@@ -424,12 +424,12 @@ static void render_debug_options(void) {
             igInputScalar("##F", ImGuiDataType_U8, &regs->f, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
-        	igText("AF: %04X", cpu->regs.af);
+            igText("AF: %04X", cpu->regs.af);
 
             // Row: B / C   | inputs | BC
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
-        	igTextUnformatted("B / C", NULL);
+            igTextUnformatted("B / C", NULL);
 
             igTableSetColumnIndex(1);
             igInputScalar("##B", ImGuiDataType_U8, &regs->b, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
@@ -438,12 +438,12 @@ static void render_debug_options(void) {
             igInputScalar("##C", ImGuiDataType_U8, &regs->c, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
-        	igText("BC: %04X", cpu->regs.bc);
+            igText("BC: %04X", cpu->regs.bc);
 
             // Row: D / E   | inputs | DE
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
-        	igTextUnformatted("D / E", NULL);
+            igTextUnformatted("D / E", NULL);
 
             igTableSetColumnIndex(1);
             igInputScalar("##D", ImGuiDataType_U8, &regs->d, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
@@ -452,12 +452,12 @@ static void render_debug_options(void) {
             igInputScalar("##E", ImGuiDataType_U8, &regs->e, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
-        	igText("DE: %04X", cpu->regs.de);
+            igText("DE: %04X", cpu->regs.de);
 
             // Row: H / L   | inputs | HL
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
-        	igTextUnformatted("H / L", NULL);
+            igTextUnformatted("H / L", NULL);
 
             igTableSetColumnIndex(1);
             igInputScalar("##H", ImGuiDataType_U8, &regs->h, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
@@ -466,21 +466,21 @@ static void render_debug_options(void) {
             igInputScalar("##L", ImGuiDataType_U8, &regs->l, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
-        	igText("HL: %04X", cpu->regs.hl);
+            igText("HL: %04X", cpu->regs.hl);
 
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
-			igTextUnformatted("SP", NULL);
-
-			igTableSetColumnIndex(1);
-			igInputScalar("##SP", ImGuiDataType_U16, &regs->sp, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
-
-            igTableNextRow(0, 0);
-            igTableSetColumnIndex(0);
-			igTextUnformatted("PC", NULL);
+            igTextUnformatted("SP", NULL);
 
             igTableSetColumnIndex(1);
-			igInputScalar("##PC", ImGuiDataType_U16, &regs->pc, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##SP", ImGuiDataType_U16, &regs->sp, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0);
+            igTextUnformatted("PC", NULL);
+
+            igTableSetColumnIndex(1);
+            igInputScalar("##PC", ImGuiDataType_U16, &regs->pc, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igEndTable();
         }
@@ -529,31 +529,31 @@ static void render_debug_options(void) {
         igTableSetColumnIndex(0);
 
         if (igBeginTable("timer_tbl", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0.0f, 0 }, 0.0f)) {
-			igTableSetupColumn("DIV", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("DIV", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
             igTableSetupColumn("DIV Reg", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
-			igTableSetupColumn("TIMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
-			igTableSetupColumn("TMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
-			igTableSetupColumn("TAC", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
-			igTableSetupColumn("Reload", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("TIMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("TMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("TAC", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("Reload", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
             igTableHeadersRow();
-			igTableNextRow(0, 0);
+            igTableNextRow(0, 0);
 
-			uint8_t divreg = (timer->divider >> 8) & 0xFF;
+            uint8_t divreg = (timer->divider >> 8) & 0xFF;
 
             igTableNextColumn();
             igInputScalar("##div", ImGuiDataType_U16, &timer->divider, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-			igInputScalar("##divreg", ImGuiDataType_U8, &divreg, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            igInputScalar("##divreg", ImGuiDataType_U8, &divreg, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-			igInputScalar("##tima", ImGuiDataType_U8, &timer->counter, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            igInputScalar("##tima", ImGuiDataType_U8, &timer->counter, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-			igInputScalar("##tma", ImGuiDataType_U8, &timer->modulo, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            igInputScalar("##tma", ImGuiDataType_U8, &timer->modulo, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-			igInputScalar("##tac", ImGuiDataType_U8, &timer->control, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##tac", ImGuiDataType_U8, &timer->control, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
             igTableNextColumn();
-			igInputScalar("##reload", ImGuiDataType_U8, &timer->ticks_since_overflow, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            igInputScalar("##reload", ImGuiDataType_U8, &timer->ticks_since_overflow, NULL, NULL, "%d", ImGuiInputTextFlags_None);
 
-			timer->divider = (uint16_t)((uint16_t)divreg << 8) | (timer->divider & 0x00FF);
+            timer->divider = (uint16_t)((uint16_t)divreg << 8) | (timer->divider & 0x00FF);
             
             igEndTable();
         }
@@ -561,7 +561,7 @@ static void render_debug_options(void) {
         igEndTable();
     }
 
-	igPopID(); // CPU_UI
+    igPopID(); // CPU_UI
 
     igEndChild();
 
@@ -655,18 +655,18 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 static void drop_callback(GLFWwindow* window, int count, const char** paths) {
     (void)window;
     if (count != 1) {
-		log_warn("Please drop a single ROM file");
+        log_warn("Please drop a single ROM file");
         return;
-	}
+    }
 
     emu_stop();
     fgb_emu_destroy(g_app.emu);
 
-	log_info("Loading ROM: %s", paths[0]);
-	g_app.emu = emu_init(paths[0]);
+    log_info("Loading ROM: %s", paths[0]);
+    g_app.emu = emu_init(paths[0]);
 
     configure_cpu();
-	emu_start();
+    emu_start();
 }
 
 static void gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
@@ -748,10 +748,10 @@ static int emu_run(void* arg) {
 bool emu_start(void) {
     if (thrd_create(&g_app.emu_thread, emu_run, g_app.emu) != thrd_success) {
         log_error("Could not create emulator thread. Exiting");
-		return false;
+        return false;
     }
 
-	g_app.emulate = true;
+    g_app.emulate = true;
     return true;
 }
 
@@ -760,8 +760,8 @@ bool emu_stop(void) {
     int res = 0;
     if (thrd_join(g_app.emu_thread, &res) != thrd_success) {
         log_error("Could not join emulator thread. Exiting");
-		return false;
-	}
+        return false;
+    }
 
     return true;
 }
@@ -850,11 +850,11 @@ int main(int argc, char** argv) {
     g_app.emu->ppu->obj_palette = obj_pal;
 
     glfwSetKeyCallback(window, key_callback);
-	glfwSetDropCallback(window, drop_callback);
+    glfwSetDropCallback(window, drop_callback);
 
     if (!emu_start()) {
         return 1;
-	}
+    }
 
     double last_time = glfwGetTime();
     double last_title_update = last_time;
