@@ -1,0 +1,35 @@
+{
+    "version": 2,
+    "configurePresets": [
+        {
+            "name": "windows-debug",
+            "displayName": "Windows Debug",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/windows-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "IMGUI_STATIC": "yes"
+            }
+        },
+        {
+            "name": "windows-release",
+            "displayName": "Windows Release",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/windows-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "IMGUI_STATIC": "yes"
+            }
+        },
+        {
+            "name": "windows-dist",
+            "displayName": "Windows Dist",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/windows-dist",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "IMGUI_STATIC": "yes"
+            }
+        }
+    ]
+}
