@@ -9,7 +9,6 @@
 #include "io.h"
 #include "ppu.h"
 
-#define FGB_MEMORY_SIZE 0x10000 // 64KB mmu size
 #define FGB_WRAM_SIZE   (0x1000 + 0x1000) // 2x 8 KiB Banks
 #define FGB_HRAM_SIZE   0x7F
 
@@ -39,7 +38,7 @@ typedef struct fgb_mmu {
     bool use_ext_data;
 } fgb_mmu;
 
-typedef struct fgb_mem_ops {
+typedef struct fgb_mmu_ops {
     void (*reset)(fgb_mmu* mmu);
     void (*write_u8)(fgb_mmu* mmu, uint16_t addr, uint8_t value);
     uint8_t (*read_u8)(const fgb_mmu* mmu, uint16_t addr);

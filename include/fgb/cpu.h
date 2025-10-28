@@ -4,6 +4,7 @@
 #include "mmu.h"
 #include "timer.h"
 #include "io.h"
+#include "instruction.h"
 #include "ppu.h"
 
 #include <stdbool.h>
@@ -26,6 +27,7 @@ enum fgb_cpu_interrupt {
 
 typedef void (*fgb_cpu_bp_callback)(struct fgb_cpu* cpu, size_t bp, uint16_t addr);
 typedef void (*fgb_cpu_step_callback)(struct fgb_cpu* cpu);
+typedef void (*fgb_cpu_trace_callback)(struct fgb_cpu* cpu, uint16_t addr, uint32_t depth, const char* disasm);
 
 typedef struct fgb_cpu_regs {
     union {
@@ -72,6 +74,15 @@ typedef struct fgb_cpu_regs {
     uint16_t pc;
 } fgb_cpu_regs;
 
+typedef struct fgb_cpu_trace_step {
+    uint16_t addr;
+    union {
+        uint8_t op8;
+        uint16_t op16;
+    };
+    const fgb_instruction* instruction;
+} fgb_cpu_trace_step;
+
 typedef struct fgb_cpu {
     fgb_cpu_regs regs;
     fgb_mmu mmu;
@@ -86,8 +97,11 @@ typedef struct fgb_cpu {
     bool ei_scheduled;
     bool irq_serviced;
 
-    bool trace;
+    int trace_count;
     int frames;
+    uint32_t call_depth;
+
+    uint32_t cycles_this_frame;
 
     struct {
         uint8_t enable;
@@ -99,6 +113,10 @@ typedef struct fgb_cpu {
     bool do_step;
     fgb_cpu_bp_callback bp_callback;
     fgb_cpu_step_callback step_callback;
+    fgb_cpu_trace_callback trace_callback;
+    bool force_disable_interrupts;
+
+    fgb_cpu_trace_step last_ins;
 } fgb_cpu;
 
 
@@ -106,6 +124,8 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu);
 fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, const fgb_mmu_ops* mmu_ops);
 void fgb_cpu_destroy(fgb_cpu* cpu);
 
+void fgb_cpu_tick(fgb_cpu* cpu); // Tick 1 T-cycle
+void fgb_cpu_m_tick(fgb_cpu* cpu); // Tick 1 M-cycle (4 T-cycles)
 void fgb_cpu_reset(fgb_cpu* cpu);
 void fgb_cpu_step(fgb_cpu* cpu); // Executes FGB_CYCLES_PER_FRAME cycles
 int fgb_cpu_execute(fgb_cpu* cpu); // Executes a single instruction and returns its cycles
@@ -124,5 +144,6 @@ void fgb_cpu_clear_bp(fgb_cpu* cpu, uint16_t addr);
 int fgb_cpu_get_bp_at(const fgb_cpu* cpu, uint16_t addr);
 void fgb_cpu_set_bp_callback(fgb_cpu* cpu, fgb_cpu_bp_callback callback);
 void fgb_cpu_set_step_callback(fgb_cpu* cpu, fgb_cpu_step_callback callback);
+void fgb_cpu_set_trace_callback(fgb_cpu* cpu, fgb_cpu_trace_callback callback);
 
 #endif // FGB_CPU_H

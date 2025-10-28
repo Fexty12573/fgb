@@ -37,6 +37,8 @@ struct app {
     float main_scale;
     GLFWwindow* window;
 
+    FILE* trace_file;
+
     uint16_t disasm_addr;
     char disasm_buffer[DISASM_LINES][64];
     char* disasm_buffer_ptrs[DISASM_LINES];
@@ -75,7 +77,12 @@ static void on_breakpoint(fgb_cpu* cpu, size_t bp, uint16_t addr) {
     (void)cpu;
     (void)bp;
 
-    set_disasm_addr(addr);
+    if (addr < g_app.disasm_addrs[0] || addr > g_app.disasm_addrs[DISASM_LINES - 1]) {
+        set_disasm_addr(addr);
+    }
+
+    fflush(stdout);
+    fflush(stderr);
 }
 
 static void on_step(fgb_cpu* cpu) {
@@ -94,6 +101,14 @@ static void on_step(fgb_cpu* cpu) {
         // Stepped outside the current view, reset to PC
         set_disasm_addr(pc);
     }
+
+    fflush(stdout);
+    fflush(stderr);
+}
+
+static void log_cpu_trace(fgb_cpu* cpu, uint16_t addr, uint32_t depth, const char* disasm) {
+    (void)cpu;
+    fprintf(g_app.trace_file, "0x%04X:%*s%s\n", addr, 2 * (depth + 1), "", disasm);
 }
 
 static fgb_emu* emu_init(const char* rom_path) {
@@ -289,9 +304,7 @@ static void render_debug_options(void) {
         set_disasm_addr(g_app.emu->cpu->regs.pc);
     }
 
-    if (igCheckbox("Trace", &g_app.emu->cpu->trace)) {
-        log_info("CPU trace %s", g_app.emu->cpu->trace ? "enabled" : "disabled");
-    }
+    igInputInt("Trace", &g_app.emu->cpu->trace_count, 1, 100, ImGuiInputTextFlags_None);
 
     if (igCheckbox("Hide Background", &g_app.emu->ppu->debug.hide_bg)) {
         log_info("Background rendering %s", g_app.emu->ppu->debug.hide_bg ? "disabled" : "enabled");
@@ -584,8 +597,8 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     fgb_emu* emu = g_app.emu;
     if (action == GLFW_PRESS) {
         if (key == GLFW_KEY_T) {
-            emu->cpu->trace = !emu->cpu->trace;
-            log_info("CPU trace %s", emu->cpu->trace ? "enabled" : "disabled");
+            emu->cpu->trace_count = emu->cpu->trace_count == 0 ? -1 : 0;
+            log_info("CPU trace %s", emu->cpu->trace_count > 0 ? "enabled" : "disabled");
         }
         if (key == GLFW_KEY_R) {
             fgb_cpu_reset(emu->cpu);
@@ -770,11 +783,12 @@ void configure_cpu(void) {
     set_disasm_addr(0x100);
     fgb_cpu_set_bp_callback(g_app.emu->cpu, on_breakpoint);
     fgb_cpu_set_step_callback(g_app.emu->cpu, on_step);
+    fgb_cpu_set_trace_callback(g_app.emu->cpu, log_cpu_trace);
 
     ulog_set_quiet(false);
     ulog_set_level(LOG_DEBUG);
     fgb_emu_set_log_level(g_app.emu, LOG_DEBUG);
-    g_app.emu->cpu->trace = false;
+    g_app.emu->cpu->trace_count = 0;
 }
 
 int main(int argc, char** argv) {
@@ -798,6 +812,12 @@ int main(int argc, char** argv) {
     }
 
     imgui_init();
+
+    g_app.trace_file = fopen("cpu_trace.log", "w");
+    if (!g_app.trace_file) {
+        printf("Could not open trace log file. Exiting\n");
+        return 1;
+    }
     
     g_app.emu = emu_init(argv[1]);
     if (!g_app.emu) {
@@ -941,6 +961,9 @@ int main(int argc, char** argv) {
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
+
+    fclose(g_app.trace_file);
+
     igDestroyContext(NULL);
 
     glfwDestroyWindow(window);
