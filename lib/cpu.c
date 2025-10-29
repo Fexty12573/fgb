@@ -552,10 +552,12 @@ void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
         return;
     }
 
+    fgb_cpu_write_u8(cpu, --cpu->regs.sp, (cpu->regs.pc >> 8) & 0xFF);
+
     const uint8_t ienable = cpu->interrupt.enable;
     uint8_t iflags = cpu->interrupt.flags;
     const uint8_t irq = ienable & iflags;
-    uint16_t dest = 0x0000;
+	uint16_t dest = 0x0000; // 0 for the case where SP is 0 so PC is pushed to IE and may disable interrupts
 
     if      (irq & IRQ_VBLANK) { iflags &= ~IRQ_VBLANK; dest = fgb_interrupt_vector[IRQ_VBLANK]; }
     else if (irq & IRQ_LCD)    { iflags &= ~IRQ_LCD;    dest = fgb_interrupt_vector[IRQ_LCD];    }
@@ -567,15 +569,12 @@ void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
     cpu->ime = false;
     cpu->mode = CPU_MODE_NORMAL;
 
-    // 2 "nop" M-cycles
+	fgb_cpu_write_u8(cpu, --cpu->regs.sp, (cpu->regs.pc >> 0) & 0xFF);
+
+    fgb_cpu_m_tick(cpu);
     fgb_cpu_m_tick(cpu);
     fgb_cpu_m_tick(cpu);
 
-    // Push PC to stack
-    fgb_push(cpu, cpu->regs.pc);
-
-    // Final M-cycle to jump to interrupt vector
-    fgb_cpu_m_tick(cpu);
     cpu->regs.pc = dest;
 }
 
