@@ -26,6 +26,15 @@ enum fgb_cpu_interrupt {
     IRQ_MASK    = IRQ_VBLANK | IRQ_LCD | IRQ_TIMER | IRQ_SERIAL | IRQ_JOYPAD,
 };
 
+enum fgb_cpu_mode {
+    CPU_MODE_NORMAL,
+    CPU_MODE_STOP,
+    CPU_MODE_HALT,
+    CPU_MODE_HALT_BUG,
+    CPU_MODE_HALT_DI,
+    CPU_MODE_EI,
+};
+
 typedef void (*fgb_cpu_bp_callback)(struct fgb_cpu* cpu, size_t bp, uint16_t addr);
 typedef void (*fgb_cpu_step_callback)(struct fgb_cpu* cpu);
 typedef void (*fgb_cpu_trace_callback)(struct fgb_cpu* cpu, uint16_t addr, uint32_t depth, const char* disasm);
@@ -94,8 +103,7 @@ typedef struct fgb_cpu {
     bool use_alt_cycles;
     
     bool ime;
-    bool halted;
-    bool ei_scheduled;
+    enum fgb_cpu_mode mode;
 
     int trace_count;
     int frames;

@@ -9,12 +9,14 @@
 
 
 // These functions automatically tick components
+static const fgb_instruction* fgb_cpu_fetch_instruction(fgb_cpu* cpu);
 static uint8_t fgb_cpu_fetch(fgb_cpu* cpu);
 static uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu);
 static uint8_t fgb_cpu_read_u8(fgb_cpu* cpu, uint16_t addr);
 static uint16_t fgb_cpu_read_u16(fgb_cpu* cpu, uint16_t addr);
 static void fgb_cpu_write_u8(fgb_cpu* cpu, uint16_t addr, uint8_t value);
 static void fgb_cpu_write_u16(fgb_cpu* cpu, uint16_t addr, uint16_t value);
+static void fgb_cpu_run_instruction(fgb_cpu* cpu, const fgb_instruction* instr);
 
 static void fgb_cpu_handle_interrupts(fgb_cpu* cpu);
 #define fgb_mmu_write(cpu, addr, value) (cpu)->mmu.write_u8(&(cpu)->mmu, addr, value)
@@ -141,7 +143,7 @@ void fgb_cpu_m_tick(fgb_cpu *cpu) {
 
 void fgb_cpu_reset(fgb_cpu* cpu) {
     memset(&cpu->regs, 0, sizeof(cpu->regs));
-    cpu->halted = false;
+    cpu->mode = CPU_MODE_NORMAL;
     cpu->total_cycles = 0;
     cpu->cycles_this_frame = 0;
 
@@ -213,73 +215,75 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
     // the caller isn't blocked
     const uint32_t start_cycles = cpu->cycles_this_frame;
 
-    // Enable interrupts if EI was just executed
-    if (cpu->ei_scheduled) {
-        cpu->ime = true;
-        cpu->ei_scheduled = false;
-    }
+    switch (cpu->mode) {
+    case CPU_MODE_NORMAL:
+        fgb_cpu_run_instruction(cpu, fgb_cpu_fetch_instruction(cpu));
+        break;
 
-    if (!cpu->halted) {
-        const uint16_t addr = cpu->regs.pc; // Need to store it here in case of a jump
-        const uint32_t depth = cpu->call_depth;
-        const uint8_t opcode = fgb_cpu_fetch(cpu);
-        const fgb_instruction* instruction = fgb_instruction_get(opcode);
-        assert(instruction->opcode == opcode);
+    case CPU_MODE_STOP:
+    case CPU_MODE_HALT:
+        fgb_cpu_m_tick(cpu);
+        break;
 
-        instruction->exec_0(cpu, instruction);
+    case CPU_MODE_HALT_BUG: {
+        const fgb_instruction* instr = fgb_cpu_fetch_instruction(cpu);
 
-        if (cpu->trace_callback && (cpu->trace_count > 0 || cpu->trace_count < 0)) {
-            if (cpu->trace_count > 0) {
-                cpu->trace_count--;
-            }
+        // Revert PC increment
+        cpu->regs.pc--;
 
-            switch (instruction->operand_size) {
-            case 0:
-                cpu->trace_callback(cpu, addr, depth, instruction->fmt_0(instruction));
-                break;
-            case 1:
-                cpu->trace_callback(cpu, addr, depth, instruction->fmt_1(instruction, fgb_cpu_read_u8(cpu, addr + 1)));
-                break;
-            case 2:
-                cpu->trace_callback(cpu, addr, depth, instruction->fmt_2(instruction, fgb_cpu_read_u16(cpu, addr + 1)));
-                break;
-            default:
-                cpu->trace_callback(cpu, addr, depth, "UNKNOWN");
-                break;
-            }
+        fgb_cpu_run_instruction(cpu, instr);
+        cpu->mode = CPU_MODE_NORMAL;
+    } break;
+
+    case CPU_MODE_HALT_DI:
+        fgb_cpu_m_tick(cpu);
+        if (fgb_cpu_has_pending_interrupts(cpu)) {
+            cpu->mode = CPU_MODE_NORMAL;
         }
+        break;
 
-        // cycles = instruction->cycles != 255 ? instruction->cycles : fgb_instruction_get_cb_cycles(cpu->last_ins.op8);
+    case CPU_MODE_EI:
+        // Enable interrupts after the next instruction
+        cpu->ime = true;
+        cpu->mode = CPU_MODE_NORMAL;
 
-        // if (cpu->use_alt_cycles && instruction->alt_cycles != 0) {
-        //     cycles = instruction->alt_cycles;
-        //     cpu->use_alt_cycles = false; // Reset after use
-        // }
+        fgb_cpu_run_instruction(cpu, fgb_cpu_fetch_instruction(cpu));
+        break;
     }
 
-    // Update the timer
-    // for (int i = 0; i < cycles; i++) {
-    //     fgb_timer_tick(&cpu->timer);
-    // }
-
-    // Handle interrupts
     if (fgb_cpu_has_pending_interrupts(cpu)) {
         fgb_cpu_handle_interrupts(cpu);
     }
 
-    // if (cpu->irq_serviced) {
-    //     cycles += 20; // Interrupt servicing takes an additional 5 M-cycles (20 T-cycles)
-    //     cpu->irq_serviced = false;
-
-    //     for (int i = 0; i < 20; i++) {
-    //         fgb_timer_tick(&cpu->timer);
-    //     }
-    // }
-
-    // Update PPU
-    // fgb_ppu_tick(cpu->ppu, cycles);
-
     return cpu->cycles_this_frame - start_cycles;
+}
+
+void fgb_cpu_run_instruction(fgb_cpu *cpu, const fgb_instruction* instr) {
+    const uint16_t addr = cpu->regs.pc - 1; // Address of the fetched opcode
+    const uint32_t depth = cpu->call_depth;
+
+    instr->exec_0(cpu, instr);
+
+    if (cpu->trace_callback && (cpu->trace_count > 0 || cpu->trace_count < 0)) {
+        if (cpu->trace_count > 0) {
+            cpu->trace_count--;
+        }
+
+        switch (instr->operand_size) {
+        case 0:
+            cpu->trace_callback(cpu, addr, depth, instr->fmt_0(instr));
+            break;
+        case 1:
+            cpu->trace_callback(cpu, addr, depth, instr->fmt_1(instr, fgb_cpu_read_u8(cpu, addr + 1)));
+            break;
+        case 2:
+            cpu->trace_callback(cpu, addr, depth, instr->fmt_2(instr, fgb_cpu_read_u16(cpu, addr + 1)));
+            break;
+        default:
+            cpu->trace_callback(cpu, addr, depth, "UNKNOWN");
+            break;
+        }
+    }
 }
 
 void fgb_cpu_request_interrupt(fgb_cpu* cpu, enum fgb_cpu_interrupt interrupt) {
@@ -335,7 +339,7 @@ void fgb_cpu_dump_state(const fgb_cpu* cpu) {
     log_info("  H: %d", cpu->regs.flags.h);
     log_info("  C: %d", cpu->regs.flags.c);
     log_info("IME: %d", cpu->ime);
-    log_info("Halted: %d", cpu->halted);
+    log_info("Halted: %d", cpu->mode == CPU_MODE_HALT);
     log_info("Interrupts:");
     log_info("  Enable: 0x%02X", cpu->interrupt.enable);
     log_info("  Flags: 0x%02X", cpu->interrupt.flags);
@@ -491,7 +495,12 @@ void fgb_cpu_set_trace_callback(fgb_cpu *cpu, fgb_cpu_trace_callback callback) {
     cpu->trace_callback = callback;
 }
 
-uint8_t fgb_cpu_fetch(fgb_cpu* cpu) {
+const fgb_instruction* fgb_cpu_fetch_instruction(fgb_cpu *cpu) {
+    return fgb_instruction_get(fgb_cpu_fetch(cpu));
+}
+
+uint8_t fgb_cpu_fetch(fgb_cpu *cpu)
+{
     return fgb_cpu_read_u8(cpu, cpu->regs.pc++);
 }
 
@@ -556,6 +565,7 @@ void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
 
     cpu->interrupt.flags = iflags;
     cpu->ime = false;
+    cpu->mode = CPU_MODE_NORMAL;
 
     // 2 "nop" M-cycles
     fgb_cpu_m_tick(cpu);
@@ -699,11 +709,19 @@ void fgb_stop(fgb_cpu* cpu, const fgb_instruction* ins) {
     (void)fgb_cpu_fetch(cpu); // Consume the next byte
     
     // Just gonna interpret STOP as a HALT because I cba
-    cpu->halted = true;
+    cpu->mode = CPU_MODE_STOP;
 }
 
 void fgb_halt(fgb_cpu* cpu, const fgb_instruction* ins) {
-    cpu->halted = true;
+    if (cpu->ime) {
+        cpu->mode = CPU_MODE_HALT;
+    } else {
+        if (fgb_cpu_has_pending_interrupts(cpu)) {
+            cpu->mode = CPU_MODE_HALT_BUG;
+        } else {
+            cpu->mode = CPU_MODE_HALT_DI;
+        }
+    }
 }
 
 void fgb_ld_bc_imm(fgb_cpu* cpu, const fgb_instruction* ins) {
@@ -1783,7 +1801,7 @@ void fgb_ret_nc(fgb_cpu* cpu, const fgb_instruction* ins) {
 
 void fgb_ei(fgb_cpu* cpu, const fgb_instruction* ins) {
     // The effect of EI is delayed by one instruction
-    cpu->ei_scheduled = true;
+    cpu->mode = CPU_MODE_EI;
 }
 
 void fgb_di(fgb_cpu* cpu, const fgb_instruction* ins) {

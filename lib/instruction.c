@@ -13,21 +13,21 @@
 
 static void fgb_unimplemented_0(fgb_cpu* cpu, const fgb_instruction* ins) {
     log_error("Unimplemented instruction: %s (0x%02X) at 0x%04X", ins->disassembly, ins->opcode, cpu->regs.pc);
-    cpu->halted = true;
+    cpu->mode = CPU_MODE_HALT;
 }
 
 static void fgb_unimplemented_1(fgb_cpu* cpu, const fgb_instruction* ins, uint8_t operand) {
     char disasm[64];
     snprintf(disasm, sizeof(disasm), ins->disassembly, operand);
     log_error("Unimplemented instruction: %s (0x%02X) at 0x%04X", disasm, ins->opcode, cpu->regs.pc);
-    cpu->halted = true;
+    cpu->mode = CPU_MODE_HALT;
 }
 
 static void fgb_unimplemented_2(fgb_cpu* cpu, const fgb_instruction* ins, uint16_t operand) {
     char disasm[64];
     snprintf(disasm, sizeof(disasm), ins->disassembly, operand);
     log_error("Unimplemented instruction: %s (0x%02X) at 0x%04X", disasm, ins->opcode, cpu->regs.pc);
-    cpu->halted = true;
+    cpu->mode = CPU_MODE_HALT;
 }
 
 static char fmt_buffer[64];

@@ -549,7 +549,7 @@ static void render_debug_options(void) {
 
         igSeparatorText("Misc");
         igCheckbox("IME", &cpu->ime);
-        igCheckbox("Halted", &cpu->halted);
+        igText("Mode: %d", cpu->mode);
         igText("IE: %02X", cpu->interrupt.enable);
         igText("IF: %02X", cpu->interrupt.flags);
         igText("T-Cycles: %llu", cpu->total_cycles);
@@ -790,7 +790,7 @@ bool emu_start(void) {
 
 bool emu_stop(void) {
     g_app.emulate = false;
-    g_app.emu->cpu->halted = false; // Wake up CPU if halted
+    g_app.emu->cpu->mode = CPU_MODE_NORMAL; // Ensure CPU is not in halt or stop mode
     int res = 0;
     if (thrd_join(g_app.emu_thread, &res) != thrd_success) {
         log_error("Could not join emulator thread. Exiting");
