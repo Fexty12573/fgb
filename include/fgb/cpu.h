@@ -102,6 +102,7 @@ typedef struct fgb_cpu {
     uint32_t call_depth;
 
     uint32_t cycles_this_frame;
+    uint64_t total_cycles;
 
     struct {
         uint8_t enable;
@@ -130,6 +131,7 @@ void fgb_cpu_reset(fgb_cpu* cpu);
 void fgb_cpu_step(fgb_cpu* cpu); // Executes FGB_CYCLES_PER_FRAME cycles
 int fgb_cpu_execute(fgb_cpu* cpu); // Executes a single instruction and returns its cycles
 void fgb_cpu_request_interrupt(fgb_cpu* cpu, enum fgb_cpu_interrupt interrupt);
+bool fgb_cpu_has_pending_interrupts(const fgb_cpu* cpu);
 
 void fgb_cpu_write(fgb_cpu* cpu, uint16_t addr, uint8_t value);
 uint8_t fgb_cpu_read(const fgb_cpu* cpu, uint16_t addr);

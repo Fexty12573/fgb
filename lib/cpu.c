@@ -91,6 +91,7 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu) {
     fgb_io_init(&cpu->io, cpu);
     fgb_mmu_init(&cpu->mmu, cart, cpu, NULL);
     fgb_cpu_reset(cpu);
+    fgb_ppu_reset(ppu);
 
     return cpu;
 }
@@ -121,6 +122,7 @@ void fgb_cpu_destroy(fgb_cpu* cpu) {
 
 void fgb_cpu_tick(fgb_cpu *cpu) {
     cpu->cycles_this_frame++;
+    cpu->total_cycles++;
 
     fgb_timer_tick(&cpu->timer);
     fgb_ppu_tick(cpu->ppu, 1);
@@ -140,6 +142,8 @@ void fgb_cpu_m_tick(fgb_cpu *cpu) {
 void fgb_cpu_reset(fgb_cpu* cpu) {
     memset(&cpu->regs, 0, sizeof(cpu->regs));
     cpu->halted = false;
+    cpu->total_cycles = 0;
+    cpu->cycles_this_frame = 0;
 
     cpu->regs.pc = 0x0100;
     cpu->regs.sp = 0xFFFE;
@@ -259,7 +263,9 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
     // }
 
     // Handle interrupts
-    fgb_cpu_handle_interrupts(cpu);
+    if (fgb_cpu_has_pending_interrupts(cpu)) {
+        fgb_cpu_handle_interrupts(cpu);
+    }
 
     // if (cpu->irq_serviced) {
     //     cycles += 20; // Interrupt servicing takes an additional 5 M-cycles (20 T-cycles)
@@ -278,6 +284,10 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
 
 void fgb_cpu_request_interrupt(fgb_cpu* cpu, enum fgb_cpu_interrupt interrupt) {
     cpu->interrupt.flags |= (uint8_t)interrupt;
+}
+
+bool fgb_cpu_has_pending_interrupts(const fgb_cpu *cpu) {
+    return cpu->interrupt.enable & cpu->interrupt.flags & 0x1F;
 }
 
 void fgb_cpu_write(fgb_cpu* cpu, uint16_t addr, uint8_t value) {
@@ -563,16 +573,18 @@ void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
         // Push high byte of PC
         fgb_cpu_write_u8(cpu, --cpu->regs.sp, (cpu->regs.pc >> 8) & 0xFF);
 
-        uint8_t irq = cpu->interrupt.enable & cpu->interrupt.flags;
+        const uint8_t ienable = cpu->interrupt.enable;
+        uint8_t iflags = cpu->interrupt.flags;
+        const uint8_t irq = ienable & iflags;
         uint16_t dest = 0x0000;
 
-        if      (irq & IRQ_VBLANK) { irq &= ~IRQ_VBLANK; dest = fgb_interrupt_vector[IRQ_VBLANK]; }
-        else if (irq & IRQ_LCD)    { irq &= ~IRQ_LCD;    dest = fgb_interrupt_vector[IRQ_LCD];    }
-        else if (irq & IRQ_TIMER)  { irq &= ~IRQ_TIMER;  dest = fgb_interrupt_vector[IRQ_TIMER];  }
-        else if (irq & IRQ_SERIAL) { irq &= ~IRQ_SERIAL; dest = fgb_interrupt_vector[IRQ_SERIAL]; }
-        else if (irq & IRQ_JOYPAD) { irq &= ~IRQ_JOYPAD; dest = fgb_interrupt_vector[IRQ_JOYPAD]; }
+        if      (irq & IRQ_VBLANK) { iflags &= ~IRQ_VBLANK; dest = fgb_interrupt_vector[IRQ_VBLANK]; }
+        else if (irq & IRQ_LCD)    { iflags &= ~IRQ_LCD;    dest = fgb_interrupt_vector[IRQ_LCD];    }
+        else if (irq & IRQ_TIMER)  { iflags &= ~IRQ_TIMER;  dest = fgb_interrupt_vector[IRQ_TIMER];  }
+        else if (irq & IRQ_SERIAL) { iflags &= ~IRQ_SERIAL; dest = fgb_interrupt_vector[IRQ_SERIAL]; }
+        else if (irq & IRQ_JOYPAD) { iflags &= ~IRQ_JOYPAD; dest = fgb_interrupt_vector[IRQ_JOYPAD]; }
 
-        cpu->interrupt.flags = irq;
+        cpu->interrupt.flags = iflags;
 
         // Push low byte of PC
         fgb_cpu_write_u8(cpu, --cpu->regs.sp, (cpu->regs.pc >> 0) & 0xFF);
