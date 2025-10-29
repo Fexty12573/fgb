@@ -33,6 +33,7 @@ struct app {
     int block_to_display;
     double render_framerate;
     double emu_framerate;
+    bool reset_keep_breakpoints;
 
     float main_scale;
     GLFWwindow* window;
@@ -53,6 +54,7 @@ struct app g_app = {
     .block_to_display = 0,
     .render_framerate = 0.0,
     .emu_framerate = 0.0,
+    .reset_keep_breakpoints = true,
     .main_scale = 1.0f,
     .window = NULL,
     .disasm_addr = 0x0100,
@@ -295,11 +297,29 @@ static void render_debug_options(void) {
     igBegin("Debug Options", NULL, ImGuiWindowFlags_None);
 
     if (igButton("Reset", (ImVec2) { 0, 0 })) {
+        uint16_t bps[FGB_CPU_MAX_BREAKPOINTS];
+        memcpy(bps, g_app.emu->cpu->breakpoints, sizeof(bps));
+
         fgb_emu_reset(g_app.emu);
+
+        if (g_app.reset_keep_breakpoints) {
+            memcpy(g_app.emu->cpu->breakpoints, bps, sizeof(bps));
+        }
     }
 
+    igSameLine(0.0f, -1.0f);
+    igCheckbox("Keep Breakpoints on Reset", &g_app.reset_keep_breakpoints);
+
     if (igButton("Reset Paused", (ImVec2) { 0, 0 })) {
+        uint16_t bps[FGB_CPU_MAX_BREAKPOINTS];
+        memcpy(bps, g_app.emu->cpu->breakpoints, sizeof(bps));
+
         fgb_emu_reset(g_app.emu);
+
+        if (g_app.reset_keep_breakpoints) {
+            memcpy(g_app.emu->cpu->breakpoints, bps, sizeof(bps));
+        }
+
         g_app.emu->cpu->debugging = true;
         set_disasm_addr(g_app.emu->cpu->regs.pc);
     }
@@ -410,8 +430,6 @@ static void render_debug_options(void) {
 
     fgb_cpu* cpu = g_app.emu->cpu;
     fgb_cpu_regs* regs = &cpu->regs;
-
-    igSeparatorText("CPU State");
 
     igPushID_Str("CPU_UI");
 
@@ -534,6 +552,8 @@ static void render_debug_options(void) {
         igCheckbox("Halted", &cpu->halted);
         igText("IE: %02X", cpu->interrupt.enable);
         igText("IF: %02X", cpu->interrupt.flags);
+        igText("T-Cycles: %llu", cpu->total_cycles);
+        igText("M-Cycles: %llu", cpu->total_cycles / 4);
 
         // Timer
         fgb_timer* timer = &cpu->timer;
@@ -759,17 +779,18 @@ static int emu_run(void* arg) {
 }
 
 bool emu_start(void) {
+    g_app.emulate = true;
     if (thrd_create(&g_app.emu_thread, emu_run, g_app.emu) != thrd_success) {
         log_error("Could not create emulator thread. Exiting");
         return false;
     }
 
-    g_app.emulate = true;
     return true;
 }
 
 bool emu_stop(void) {
     g_app.emulate = false;
+    g_app.emu->cpu->halted = false; // Wake up CPU if halted
     int res = 0;
     if (thrd_join(g_app.emu_thread, &res) != thrd_success) {
         log_error("Could not join emulator thread. Exiting");
