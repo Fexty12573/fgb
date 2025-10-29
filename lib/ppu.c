@@ -148,7 +148,9 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
     ppu->frame_cycles += cycles;
     ppu->dma_cycles += cycles;
 
-    if (ppu->dma_active && ppu->dma_cycles >= 4) {
+    if (ppu->dma_active && ppu->dma_cycles > 4) {
+        ppu->oam_blocked = true;
+
         const int bytes_to_transfer = min(ppu->dma_cycles / 4, PPU_DMA_BYTES - ppu->dma_bytes);
         ppu->dma_cycles -= bytes_to_transfer * 4;
 
@@ -165,6 +167,10 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
         if (ppu->dma_bytes >= PPU_DMA_BYTES) {
             ppu->dma_active = false; // DMA transfer complete
         }
+    }
+
+    if (!ppu->dma_active && ppu->oam_blocked && ppu->dma_cycles > 4) {
+        ppu->oam_blocked = false;
     }
 
     switch (ppu->stat.mode) {
@@ -291,12 +297,7 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
 
     case 0xFF46:
         ppu->dma = value;
-
-        if (ppu->dma_active) {
-            log_warn("PPU: DMA transfer already active, ignoring new request");
-            return;
-        }
-
+        ppu->oam_blocked = ppu->dma_active; // OAM is blocked if a DMA is already active
         ppu->dma_active = true;
         ppu->dma_addr = (uint16_t)value << 8;
         ppu->dma_cycles = 0;
@@ -402,6 +403,11 @@ void fgb_ppu_write_oam(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
     //    return;
     //}
 
+    if (ppu->oam_blocked) {
+        log_warn("PPU: Attempt to write to OAM while OAM is blocked by DMA");
+        return;
+    }
+
     ppu->oam[addr] = value;
 }
 
@@ -410,6 +416,10 @@ uint8_t fgb_ppu_read_oam(const fgb_ppu* ppu, uint16_t addr) {
     //    log_warn("PPU: Attempt to read from OAM during OAM scan");
     //    return 0xFF;
     //}
+
+    if (ppu->oam_blocked) {
+        return 0xFF;
+    }
 
     return ppu->oam[addr];
 }

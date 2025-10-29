@@ -156,6 +156,7 @@ typedef struct fgb_ppu {
     } debug;
 
     bool dma_active; // DMA transfer is active
+    bool oam_blocked; // OAM is blocked by DMA
     uint8_t dma; // DMA register value
     uint16_t dma_addr; // Address for DMA transfer
     int dma_bytes; // Number of bytes transferred in the current DMA operation
