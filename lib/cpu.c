@@ -287,7 +287,7 @@ void fgb_cpu_request_interrupt(fgb_cpu* cpu, enum fgb_cpu_interrupt interrupt) {
 }
 
 bool fgb_cpu_has_pending_interrupts(const fgb_cpu *cpu) {
-    return cpu->interrupt.enable & cpu->interrupt.flags & 0x1F;
+    return cpu->interrupt.enable & cpu->interrupt.flags & IRQ_MASK;
 }
 
 void fgb_cpu_write(fgb_cpu* cpu, uint16_t addr, uint8_t value) {
@@ -312,7 +312,7 @@ uint8_t fgb_cpu_read(const fgb_cpu* cpu, uint16_t addr) {
         return cpu->interrupt.enable;
 
     case 0xFF0F:
-        return cpu->interrupt.flags;
+        return cpu->interrupt.flags | 0xE0; // Upper 3 bits are always 1
 
     default:
         log_warn("Unknown address for CPU read: 0x%04X", addr);
@@ -528,6 +528,7 @@ void fgb_cpu_write_u16(fgb_cpu *cpu, uint16_t addr, uint16_t value) {
 }
 
 static inline void fgb_call(fgb_cpu* cpu, uint16_t dest);
+static inline void fgb_push(fgb_cpu* cpu, uint16_t value);
 
 static const uint16_t fgb_interrupt_vector[] = {
     [IRQ_VBLANK] = 0x0040,
@@ -537,67 +538,35 @@ static const uint16_t fgb_interrupt_vector[] = {
     [IRQ_JOYPAD] = 0x0060,
 };
 
-static inline bool fgb_cpu_handle_irq(fgb_cpu* cpu, enum fgb_cpu_interrupt irq) {
-    if (!(cpu->interrupt.enable & cpu->interrupt.flags & irq)) {
-        return false;
-    }
-
-    // Interrupt is only serviced if IME is set
-    if (cpu->ime) {
-        log_trace("Handling interrupt: %d", irq);
-
-        cpu->ime = false; // IME is cleared before servicing
-        fgb_call(cpu, fgb_interrupt_vector[irq]);
-        cpu->interrupt.flags &= ~irq; // Clear the interrupt flag
-
-        cpu->irq_serviced = true; // Indicate that an IRQ was serviced
-
-        // Additional ticks for interrupt handling
-        fgb_cpu_m_tick(cpu);
-        fgb_cpu_m_tick(cpu);
-    }
-
-    cpu->halted = false; // Clear halted state
-
-    return true;
-}
-
 void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
-    cpu->irq_serviced = false;
-
-    if (cpu->force_disable_interrupts) {
+    if (cpu->force_disable_interrupts || !cpu->ime) {
         return;
     }
 
-    if (cpu->ime) {
-        // Push high byte of PC
-        fgb_cpu_write_u8(cpu, --cpu->regs.sp, (cpu->regs.pc >> 8) & 0xFF);
+    const uint8_t ienable = cpu->interrupt.enable;
+    uint8_t iflags = cpu->interrupt.flags;
+    const uint8_t irq = ienable & iflags;
+    uint16_t dest = 0x0000;
 
-        const uint8_t ienable = cpu->interrupt.enable;
-        uint8_t iflags = cpu->interrupt.flags;
-        const uint8_t irq = ienable & iflags;
-        uint16_t dest = 0x0000;
+    if      (irq & IRQ_VBLANK) { iflags &= ~IRQ_VBLANK; dest = fgb_interrupt_vector[IRQ_VBLANK]; }
+    else if (irq & IRQ_LCD)    { iflags &= ~IRQ_LCD;    dest = fgb_interrupt_vector[IRQ_LCD];    }
+    else if (irq & IRQ_TIMER)  { iflags &= ~IRQ_TIMER;  dest = fgb_interrupt_vector[IRQ_TIMER];  }
+    else if (irq & IRQ_SERIAL) { iflags &= ~IRQ_SERIAL; dest = fgb_interrupt_vector[IRQ_SERIAL]; }
+    else if (irq & IRQ_JOYPAD) { iflags &= ~IRQ_JOYPAD; dest = fgb_interrupt_vector[IRQ_JOYPAD]; }
 
-        if      (irq & IRQ_VBLANK) { iflags &= ~IRQ_VBLANK; dest = fgb_interrupt_vector[IRQ_VBLANK]; }
-        else if (irq & IRQ_LCD)    { iflags &= ~IRQ_LCD;    dest = fgb_interrupt_vector[IRQ_LCD];    }
-        else if (irq & IRQ_TIMER)  { iflags &= ~IRQ_TIMER;  dest = fgb_interrupt_vector[IRQ_TIMER];  }
-        else if (irq & IRQ_SERIAL) { iflags &= ~IRQ_SERIAL; dest = fgb_interrupt_vector[IRQ_SERIAL]; }
-        else if (irq & IRQ_JOYPAD) { iflags &= ~IRQ_JOYPAD; dest = fgb_interrupt_vector[IRQ_JOYPAD]; }
+    cpu->interrupt.flags = iflags;
+    cpu->ime = false;
 
-        cpu->interrupt.flags = iflags;
+    // 2 "nop" M-cycles
+    fgb_cpu_m_tick(cpu);
+    fgb_cpu_m_tick(cpu);
 
-        // Push low byte of PC
-        fgb_cpu_write_u8(cpu, --cpu->regs.sp, (cpu->regs.pc >> 0) & 0xFF);
+    // Push PC to stack
+    fgb_push(cpu, cpu->regs.pc);
 
-        cpu->regs.pc = dest;
-        cpu->ime = false; // IME is cleared before servicing
-        cpu->irq_serviced = true; // Indicate that an IRQ was serviced
-
-        // Additional ticks for interrupt handling (5 M-cycles total)
-        fgb_cpu_m_tick(cpu);
-        fgb_cpu_m_tick(cpu);
-        fgb_cpu_m_tick(cpu);
-    }
+    // Final M-cycle to jump to interrupt vector
+    fgb_cpu_m_tick(cpu);
+    cpu->regs.pc = dest;
 }
 
 
@@ -702,6 +671,11 @@ static inline void fgb_call(fgb_cpu* cpu, uint16_t dest) {
     cpu->regs.pc = dest;
 
     cpu->call_depth++;
+}
+
+inline void fgb_push(fgb_cpu *cpu, uint16_t value) {
+    fgb_cpu_write_u8(cpu, --cpu->regs.sp, (value >> 8) & 0xFF);
+    fgb_cpu_write_u8(cpu, --cpu->regs.sp, (value >> 0) & 0xFF);
 }
 
 // 3 M-cycles

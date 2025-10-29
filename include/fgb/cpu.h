@@ -23,6 +23,7 @@ enum fgb_cpu_interrupt {
     IRQ_TIMER   = 1 << 2,
     IRQ_SERIAL  = 1 << 3,
     IRQ_JOYPAD  = 1 << 4,
+    IRQ_MASK    = IRQ_VBLANK | IRQ_LCD | IRQ_TIMER | IRQ_SERIAL | IRQ_JOYPAD,
 };
 
 typedef void (*fgb_cpu_bp_callback)(struct fgb_cpu* cpu, size_t bp, uint16_t addr);
@@ -95,7 +96,6 @@ typedef struct fgb_cpu {
     bool ime;
     bool halted;
     bool ei_scheduled;
-    bool irq_serviced;
 
     int trace_count;
     int frames;
