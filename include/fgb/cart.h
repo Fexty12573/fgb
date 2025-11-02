@@ -93,9 +93,10 @@ typedef struct fgb_cart {
     uint8_t ram_bank;
     uint8_t* rom_banks[FGB_CART_MAX_ROM_BANKS];
     uint8_t* ram_banks[FGB_CART_MAX_RAM_BANKS];
-    bool ram_enabled;
-    uint8_t(*read)(const struct fgb_cart* cart, uint16_t addr);
-    void(*write)(struct fgb_cart* cart, uint16_t addr, uint8_t value);
+	bool ram_enabled;
+    uint8_t rom_bank_mask;
+	uint8_t(*read)(const struct fgb_cart* cart, uint16_t addr);
+	void(*write)(struct fgb_cart* cart, uint16_t addr, uint8_t value);
 } fgb_cart;
 
 fgb_cart* fgb_cart_load(const uint8_t* data, size_t size);

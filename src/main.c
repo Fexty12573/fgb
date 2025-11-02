@@ -12,6 +12,7 @@
 #include <GLFW/glfw3.h>
 #include <cimgui.h>
 #include <cimgui_impl.h>
+#include <string.h>
 
 #include "ulog.h"
 
@@ -252,7 +253,7 @@ static void imgui_init(void) {
     igStyleColorsDark(style);
 }
 
-static void render_tilesets(int tiles_per_row, ImTextureID* block_textures) {
+static void render_tilesets(int tiles_per_row, const ImTextureID* block_textures) {
     igBegin("Tilesets", NULL, ImGuiWindowFlags_AlwaysAutoResize);
     for (int i = 0; i < TILE_BLOCK_COUNT; i++) {
         const int tile_rows = TILES_PER_BLOCK / tiles_per_row;
@@ -308,8 +309,6 @@ static void render_debug_options(void) {
     }
 
     igSameLine(0.0f, -1.0f);
-    igCheckbox("Keep Breakpoints on Reset", &g_app.reset_keep_breakpoints);
-
     if (igButton("Reset Paused", (ImVec2) { 0, 0 })) {
         uint16_t bps[FGB_CPU_MAX_BREAKPOINTS];
         memcpy(bps, g_app.emu->cpu->breakpoints, sizeof(bps));
@@ -323,6 +322,11 @@ static void render_debug_options(void) {
         g_app.emu->cpu->debugging = true;
         set_disasm_addr(g_app.emu->cpu->regs.pc);
     }
+
+    igSameLine(0.0f, -1.0f);
+    igCheckbox("Keep Breakpoints on Reset", &g_app.reset_keep_breakpoints);
+
+    igCheckbox("Test Mode", &g_app.emu->cpu->test_mode);
 
     igInputInt("Trace", &g_app.emu->cpu->trace_count, 1, 100, ImGuiInputTextFlags_None);
 
@@ -428,12 +432,15 @@ static void render_debug_options(void) {
 
     igPopStyleColor(1);
 
-    fgb_cpu* cpu = g_app.emu->cpu;
-    fgb_cpu_regs* regs = &cpu->regs;
+	fgb_cpu* volatile cpu = g_app.emu->cpu;
 
     igPushID_Str("CPU_UI");
 
     if (igBeginTable("cpu_table", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV, (ImVec2) { 0, 0 }, 0.0f)) {
+        // Intentional copy to allow editing without risk of Race Conditions
+        const fgb_cpu_regs before_regs = cpu->regs;
+        fgb_cpu_regs regs = before_regs;
+
         // Left column: registers
         igTableNextRow(0, 0);
         igTableSetColumnIndex(0);
@@ -449,10 +456,10 @@ static void render_debug_options(void) {
             igTextUnformatted("A / F", NULL);
 
             igTableSetColumnIndex(1);
-            igInputScalar("##A", ImGuiDataType_U8, &regs->a, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##A", ImGuiDataType_U8, &regs.a, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(2);
-            igInputScalar("##F", ImGuiDataType_U8, &regs->f, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##F", ImGuiDataType_U8, &regs.f, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
             igText("AF: %04X", cpu->regs.af);
@@ -463,10 +470,10 @@ static void render_debug_options(void) {
             igTextUnformatted("B / C", NULL);
 
             igTableSetColumnIndex(1);
-            igInputScalar("##B", ImGuiDataType_U8, &regs->b, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##B", ImGuiDataType_U8, &regs.b, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(2);
-            igInputScalar("##C", ImGuiDataType_U8, &regs->c, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##C", ImGuiDataType_U8, &regs.c, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
             igText("BC: %04X", cpu->regs.bc);
@@ -477,10 +484,10 @@ static void render_debug_options(void) {
             igTextUnformatted("D / E", NULL);
 
             igTableSetColumnIndex(1);
-            igInputScalar("##D", ImGuiDataType_U8, &regs->d, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##D", ImGuiDataType_U8, &regs.d, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(2);
-            igInputScalar("##E", ImGuiDataType_U8, &regs->e, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##E", ImGuiDataType_U8, &regs.e, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
             igText("DE: %04X", cpu->regs.de);
@@ -491,10 +498,10 @@ static void render_debug_options(void) {
             igTextUnformatted("H / L", NULL);
 
             igTableSetColumnIndex(1);
-            igInputScalar("##H", ImGuiDataType_U8, &regs->h, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##H", ImGuiDataType_U8, &regs.h, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(2);
-            igInputScalar("##L", ImGuiDataType_U8, &regs->l, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##L", ImGuiDataType_U8, &regs.l, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
             igText("HL: %04X", cpu->regs.hl);
@@ -504,14 +511,14 @@ static void render_debug_options(void) {
             igTextUnformatted("SP", NULL);
 
             igTableSetColumnIndex(1);
-            igInputScalar("##SP", ImGuiDataType_U16, &regs->sp, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##SP", ImGuiDataType_U16, &regs.sp, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
             igTextUnformatted("PC", NULL);
 
             igTableSetColumnIndex(1);
-            igInputScalar("##PC", ImGuiDataType_U16, &regs->pc, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##PC", ImGuiDataType_U16, &regs.pc, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igEndTable();
         }
@@ -519,36 +526,41 @@ static void render_debug_options(void) {
         igPopItemWidth();
         igPopID(); // Regs
 
+        if (memcmp(&before_regs, &regs, sizeof(fgb_cpu_regs)) != 0) {
+			// Registers were modified, apply changes
+            cpu->regs = regs;
+		}
+
         // Right column: flags + misc
         igTableSetColumnIndex(1);
 
         igSeparatorText("Flags");
         igPushID_Str("Flags");
 
-        bool c = regs->flags.c;
-        bool h = regs->flags.h;
-        bool n = regs->flags.n;
-        bool z = regs->flags.z;
+		bool c = fgb_cpu_get_flag(cpu, CPU_FLAG_C);
+        bool h = fgb_cpu_get_flag(cpu, CPU_FLAG_H);
+        bool n = fgb_cpu_get_flag(cpu, CPU_FLAG_N);
+        bool z = fgb_cpu_get_flag(cpu, CPU_FLAG_Z);
 
         // Put flags in a compact 4-column table
         if (igBeginTable("flags_tbl", 4, ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0, 0 }, 0.0f)) {
             igTableNextRow(0, 0);
-            igTableSetColumnIndex(0); igCheckbox("C", &c);
-            igTableSetColumnIndex(1); igCheckbox("H", &h);
-            igTableSetColumnIndex(2); igCheckbox("N", &n);
-            igTableSetColumnIndex(3); igCheckbox("Z", &z);
+            igTableSetColumnIndex(0); if (igCheckbox("C", &c)) { fgb_cpu_set_flag(cpu, CPU_FLAG_C, c); }
+            igTableSetColumnIndex(1); if (igCheckbox("H", &h)) { fgb_cpu_set_flag(cpu, CPU_FLAG_H, h); }
+            igTableSetColumnIndex(2); if (igCheckbox("N", &n)) { fgb_cpu_set_flag(cpu, CPU_FLAG_N, n); }
+            igTableSetColumnIndex(3); if (igCheckbox("Z", &z)) { fgb_cpu_set_flag(cpu, CPU_FLAG_Z, z); }
             igEndTable();
         }
-
-        regs->flags.c = c;
-        regs->flags.h = h;
-        regs->flags.n = n;
-        regs->flags.z = z;
 
         igPopID(); // Flags
 
         igSeparatorText("Misc");
-        igCheckbox("IME", &cpu->ime);
+
+		bool ime = cpu->ime;
+        if (igCheckbox("IME", &ime)) {
+            cpu->ime = ime;
+        }
+
         igText("Mode: %d", cpu->mode);
         igText("IE: %02X", cpu->interrupt.enable);
         igText("IF: %02X", cpu->interrupt.flags);
@@ -556,7 +568,8 @@ static void render_debug_options(void) {
         igText("M-Cycles: %llu", cpu->total_cycles / 4);
 
         // Timer
-        fgb_timer* timer = &cpu->timer;
+        fgb_timer timer = cpu->timer;
+        bool modified = false;
 
         igTableNextRow(0, 0);
         igTableSetColumnIndex(0);
@@ -571,25 +584,30 @@ static void render_debug_options(void) {
             igTableHeadersRow();
             igTableNextRow(0, 0);
 
-            uint8_t divreg = (timer->divider >> 8) & 0xFF;
+            uint8_t divreg = (timer.divider >> 8) & 0xFF;
 
             igTableNextColumn();
-            igInputScalar("##div", ImGuiDataType_U16, &timer->divider, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            modified |= igInputScalar("##div", ImGuiDataType_U16, &timer.divider, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-            igInputScalar("##divreg", ImGuiDataType_U8, &divreg, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            modified |= igInputScalar("##divreg", ImGuiDataType_U8, &divreg, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-            igInputScalar("##tima", ImGuiDataType_U8, &timer->counter, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            modified |= igInputScalar("##tima", ImGuiDataType_U8, &timer.counter, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-            igInputScalar("##tma", ImGuiDataType_U8, &timer->modulo, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            modified |= igInputScalar("##tma", ImGuiDataType_U8, &timer.modulo, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-            igInputScalar("##tac", ImGuiDataType_U8, &timer->control, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            modified |= igInputScalar("##tac", ImGuiDataType_U8, &timer.control, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
             igTableNextColumn();
-            igInputScalar("##reload", ImGuiDataType_U8, &timer->ticks_since_overflow, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            modified |= igInputScalar("##reload", ImGuiDataType_U8, &timer.ticks_since_overflow, NULL, NULL, "%d", ImGuiInputTextFlags_None);
 
-            timer->divider = (uint16_t)((uint16_t)divreg << 8) | (timer->divider & 0x00FF);
+            timer.divider = (uint16_t)((uint16_t)divreg << 8) | (timer.divider & 0x00FF);
             
             igEndTable();
         }
+
+        if (modified) {
+			// Timer was modified, apply changes
+            cpu->timer = timer;
+		}
 
         igEndTable();
     }

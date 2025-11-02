@@ -25,6 +25,11 @@ static void fgb_cpu_handle_interrupts(fgb_cpu* cpu);
 
 #define FGB_BP_ADDR_NONE 0xFFFF
 
+#define set_flag(flag, value) fgb_cpu_set_flag(cpu, CPU_FLAG_##flag, value)
+#define toggle_flag(flag) fgb_cpu_toggle_flag(cpu, CPU_FLAG_##flag)
+#define clear_flag(flag) fgb_cpu_clear_flag(cpu, CPU_FLAG_##flag)
+#define get_flag(flag) fgb_cpu_get_flag(cpu, CPU_FLAG_##flag)
+
 struct fgb_init_value {
     uint16_t addr;
     uint8_t value;
@@ -126,6 +131,11 @@ void fgb_cpu_tick(fgb_cpu *cpu) {
     cpu->cycles_this_frame++;
     cpu->total_cycles++;
 
+    if (cpu->test_mode) {
+		// Don't tick peripherals in test mode
+        return;
+	}
+
     fgb_timer_tick(&cpu->timer);
     fgb_ppu_tick(cpu->ppu, 1);
     // TODO:
@@ -215,6 +225,10 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
     // the caller isn't blocked
     const uint32_t start_cycles = cpu->cycles_this_frame;
 
+    if (cpu->mode != CPU_MODE_NORMAL) {
+        log_warn("CPU is in mode %d", cpu->mode);
+	}
+
     switch (cpu->mode) {
     case CPU_MODE_NORMAL:
         fgb_cpu_run_instruction(cpu, fgb_cpu_fetch_instruction(cpu));
@@ -274,10 +288,10 @@ void fgb_cpu_run_instruction(fgb_cpu *cpu, const fgb_instruction* instr) {
             cpu->trace_callback(cpu, addr, depth, instr->fmt_0(instr));
             break;
         case 1:
-            cpu->trace_callback(cpu, addr, depth, instr->fmt_1(instr, fgb_cpu_read_u8(cpu, addr + 1)));
+            cpu->trace_callback(cpu, addr, depth, instr->fmt_1(instr, fgb_mmu_read_u8(cpu, addr + 1)));
             break;
         case 2:
-            cpu->trace_callback(cpu, addr, depth, instr->fmt_2(instr, fgb_cpu_read_u16(cpu, addr + 1)));
+            cpu->trace_callback(cpu, addr, depth, instr->fmt_2(instr, fgb_mmu_read_u16(cpu, addr + 1)));
             break;
         default:
             cpu->trace_callback(cpu, addr, depth, "UNKNOWN");
@@ -334,10 +348,10 @@ void fgb_cpu_dump_state(const fgb_cpu* cpu) {
     log_info("  SP: 0x%04X", cpu->regs.sp);
     log_info("  PC: 0x%04X", cpu->regs.pc);
     log_info("Flags:");
-    log_info("  Z: %d", cpu->regs.flags.z);
-    log_info("  N: %d", cpu->regs.flags.n);
-    log_info("  H: %d", cpu->regs.flags.h);
-    log_info("  C: %d", cpu->regs.flags.c);
+    log_info("  Z: %d", get_flag(z));
+    log_info("  N: %d", get_flag(n));
+    log_info("  H: %d", get_flag(h));
+    log_info("  C: %d", get_flag(c));
     log_info("IME: %d", cpu->ime);
     log_info("Halted: %d", cpu->mode == CPU_MODE_HALT);
     log_info("Interrupts:");
@@ -496,11 +510,14 @@ void fgb_cpu_set_trace_callback(fgb_cpu *cpu, fgb_cpu_trace_callback callback) {
 }
 
 const fgb_instruction* fgb_cpu_fetch_instruction(fgb_cpu *cpu) {
-    return fgb_instruction_get(fgb_cpu_fetch(cpu));
+	const uint8_t opcode = fgb_cpu_fetch(cpu);
+    const fgb_instruction* ins = fgb_instruction_get(opcode);
+	assert(ins->opcode == opcode);
+
+	return ins;
 }
 
-uint8_t fgb_cpu_fetch(fgb_cpu *cpu)
-{
+uint8_t fgb_cpu_fetch(fgb_cpu *cpu) {
     return fgb_cpu_read_u8(cpu, cpu->regs.pc++);
 }
 
@@ -584,91 +601,91 @@ void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
 // --------------------------------------------------------------
 
 static inline uint8_t fgb_inc_u8(fgb_cpu* cpu, uint8_t value) {
-    cpu->regs.flags.h = (value & 0xF) == 0xF;
+    set_flag(h, (value & 0xF) == 0xF);
     value++;
-    cpu->regs.flags.z = value == 0;
-    cpu->regs.flags.n = 0;
+    set_flag(z, value == 0);
+    set_flag(n, 0);
 
     return value;
 }
 
 static inline uint8_t fgb_dec_u8(fgb_cpu* cpu, uint8_t value) {
-    cpu->regs.flags.h = (value & 0xF) == 0;
+    set_flag(h, (value & 0xF) == 0);
     value--;
-    cpu->regs.flags.z = value == 0;
-    cpu->regs.flags.n = 1;
+    set_flag(z, value == 0);
+    set_flag(n, 1);
     return value;
 }
 
 static inline uint8_t fgb_add_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
     const uint16_t result = a + b;
-    cpu->regs.flags.z = (result & 0xFF) == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = (a & 0xF) + (b & 0xF) > 0xF;
-    cpu->regs.flags.c = result > 0xFF;
+    set_flag(z, (result & 0xFF) == 0);
+    set_flag(n, 0);
+    set_flag(h, (a & 0xF) + (b & 0xF) > 0xF);
+    set_flag(c, result > 0xFF);
     return result & 0xFF;
 }
 
 static inline uint16_t fgb_add_u16(fgb_cpu* cpu, uint16_t a, uint16_t b) {
     const uint32_t result = a + b;
-    cpu->regs.flags.c = result > 0xFFFF;
-    cpu->regs.flags.h = ((a & 0xFFF) + (b & 0xFFF)) > 0xFFF;
-    cpu->regs.flags.n = 0;
+    set_flag(c, result > 0xFFFF);
+    set_flag(h, ((a & 0xFFF) + (b & 0xFFF)) > 0xFFF);
+    set_flag(n, 0);
     return result & 0xFFFF;
 }
 
 static inline uint8_t fgb_adc_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
-    const uint16_t result = a + b + cpu->regs.flags.c;
-    cpu->regs.flags.z = (result & 0xFF) == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = (a & 0xF) + (b & 0xF) + cpu->regs.flags.c > 0xF;
-    cpu->regs.flags.c = result > 0xFF;
+    const uint16_t result = a + b + get_flag(c);
+    set_flag(z, (result & 0xFF) == 0);
+    set_flag(n, 0);
+    set_flag(h, (a & 0xF) + (b & 0xF) + get_flag(c) > 0xF);
+    set_flag(c, result > 0xFF);
     return result & 0xFF;
 }
 
 static inline uint8_t fgb_sub_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
-    cpu->regs.flags.c = b > a;
-    cpu->regs.flags.h = (b & 0xF) > (a & 0xF);
-    cpu->regs.flags.n = 1;
+    set_flag(c, b > a);
+    set_flag(h, (b & 0xF) > (a & 0xF));
+    set_flag(n, 1);
     a -= b;
-    cpu->regs.flags.z = a == 0;
+    set_flag(z, a == 0);
     return a;
 }
 
 static inline uint8_t fgb_sbc_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
-    cpu->regs.flags.h = (b & 0xF) + cpu->regs.flags.c > (a & 0xF);
-    const uint8_t new_c = b + cpu->regs.flags.c > a;
-    cpu->regs.flags.n = 1;
-    a -= b + cpu->regs.flags.c;
-    cpu->regs.flags.c = new_c;
-    cpu->regs.flags.z = a == 0;
+    set_flag(h, (b & 0xF) + get_flag(c) > (a & 0xF));
+    const uint8_t new_c = b + get_flag(c) > a;
+    set_flag(n, 1);
+    a -= b + get_flag(c);
+    set_flag(c, new_c);
+    set_flag(z, a == 0);
     return a;
 }
 
 static inline uint8_t fgb_and_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
     a &= b;
-    cpu->regs.flags.z = a == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 1;
-    cpu->regs.flags.c = 0;
+    set_flag(z, a == 0);
+    set_flag(n, 0);
+    set_flag(h, 1);
+    set_flag(c, 0);
     return a;
 }
 
 static inline uint8_t fgb_xor_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
     a ^= b;
-    cpu->regs.flags.z = a == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
-    cpu->regs.flags.c = 0;
+    set_flag(z, a == 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
+    set_flag(c, 0);
     return a;
 }
 
 static inline uint8_t fgb_or_u8(fgb_cpu* cpu, uint8_t a, uint8_t b) {
     a |= b;
-    cpu->regs.flags.z = a == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
-    cpu->regs.flags.c = 0;
+    set_flag(z, a == 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
+    set_flag(c, 0);
     return a;
 }
 
@@ -912,81 +929,81 @@ void fgb_dec_p_hl(fgb_cpu* cpu, const fgb_instruction* ins) {
 }
 
 void fgb_rlca(fgb_cpu* cpu, const fgb_instruction* ins) {
-    cpu->regs.flags.c = cpu->regs.a >> 7;
+    set_flag(c, cpu->regs.a >> 7);
     cpu->regs.a <<= 1;
-    cpu->regs.a |= cpu->regs.flags.c;
+    cpu->regs.a |= get_flag(c);
 
-    cpu->regs.flags.z = 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    set_flag(z, 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
 }
 
 void fgb_rrca(fgb_cpu* cpu, const fgb_instruction* ins) {
-    cpu->regs.flags.c = cpu->regs.a & 1;
+    set_flag(c, cpu->regs.a & 1);
     cpu->regs.a >>= 1;
-    cpu->regs.a |= cpu->regs.flags.c << 7;
+    cpu->regs.a |= get_flag(c) << 7;
 
-    cpu->regs.flags.z = 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    set_flag(z, 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
 }
 
 void fgb_rla(fgb_cpu* cpu, const fgb_instruction* ins) {
-    const uint8_t c = cpu->regs.flags.c;
-    cpu->regs.flags.c = cpu->regs.a >> 7;
+    const uint8_t c = get_flag(c);
+    set_flag(c, cpu->regs.a >> 7);
     cpu->regs.a <<= 1;
     cpu->regs.a |= c;
 
-    cpu->regs.flags.z = 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    set_flag(z, 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
 }
 
 void fgb_rra(fgb_cpu* cpu, const fgb_instruction* ins) {
-    const uint8_t c = cpu->regs.flags.c;
-    cpu->regs.flags.c = cpu->regs.a & 1;
+    const uint8_t c = get_flag(c);
+    set_flag(c, cpu->regs.a & 1);
     cpu->regs.a >>= 1;
     cpu->regs.a |= c << 7;
 
-    cpu->regs.flags.z = 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    set_flag(z, 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
 }
 
 void fgb_daa(fgb_cpu* cpu, const fgb_instruction* ins) {
     uint8_t adj = 0;
     uint16_t a = cpu->regs.a;
-    if (cpu->regs.flags.n) {
-        if (cpu->regs.flags.h) adj += 0x6;
-        if (cpu->regs.flags.c) adj += 0x60;
+    if (get_flag(n)) {
+        if (get_flag(h)) adj += 0x6;
+        if (get_flag(c)) adj += 0x60;
         a -= adj;
     } else {
-        if (cpu->regs.flags.h || (a & 0xF) > 0x9) adj += 0x6;
-        if (cpu->regs.flags.c || a > 0x99) { adj += 0x60; cpu->regs.flags.c = 1; }
+        if (get_flag(h) || (a & 0xF) > 0x9) adj += 0x6;
+        if (get_flag(c) || a > 0x99) { adj += 0x60; set_flag(c, 1); }
         a += adj;
     }
 
     cpu->regs.a = a;
-    cpu->regs.flags.z = cpu->regs.a == 0;
-    cpu->regs.flags.h = 0;
+    set_flag(z, cpu->regs.a == 0);
+    set_flag(h, 0);
 }
 
 void fgb_cpl(fgb_cpu* cpu, const fgb_instruction* ins) {
     cpu->regs.a ^= 0xFF;
-    cpu->regs.flags.n = 1;
-    cpu->regs.flags.h = 1;
+    set_flag(n, 1);
+    set_flag(h, 1);
 }
 
 void fgb_scf(fgb_cpu* cpu, const fgb_instruction* ins) {
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
-    cpu->regs.flags.c = 1;
+    set_flag(n, 0);
+    set_flag(h, 0);
+    set_flag(c, 1);
 }
 
 void fgb_ccf(fgb_cpu* cpu, const fgb_instruction* ins) {
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
-    cpu->regs.flags.c ^= 1;
+    set_flag(n, 0);
+    set_flag(h, 0);
+    toggle_flag(c);
 }
 
 void fgb_ld_p_imm_sp(fgb_cpu* cpu, const fgb_instruction* ins) {
@@ -1006,28 +1023,28 @@ void fgb_jr(fgb_cpu* cpu, const fgb_instruction* ins) {
 void fgb_jr_nz(fgb_cpu* cpu, const fgb_instruction* ins) {
     // Offset read happens regardless of whether the jump is taken
     const int8_t offset = (int8_t)fgb_cpu_fetch(cpu);
-    if (!cpu->regs.flags.z) {
+    if (!get_flag(z)) {
         fgb_jr_(cpu, offset);
     }
 }
 
 void fgb_jr_z(fgb_cpu* cpu, const fgb_instruction* ins) {
     const int8_t offset = (int8_t)fgb_cpu_fetch(cpu);
-    if (cpu->regs.flags.z) {
+    if (get_flag(z)) {
         fgb_jr_(cpu, offset);
     }
 }
 
 void fgb_jr_nc(fgb_cpu* cpu, const fgb_instruction* ins) {
     const int8_t offset = (int8_t)fgb_cpu_fetch(cpu);
-    if (!cpu->regs.flags.c) {
+    if (!get_flag(c)) {
         fgb_jr_(cpu, offset);
     }
 }
 
 void fgb_jr_c(fgb_cpu* cpu, const fgb_instruction* ins) {
     const int8_t offset = (int8_t)fgb_cpu_fetch(cpu);
-    if (cpu->regs.flags.c) {
+    if (get_flag(c)) {
         fgb_jr_(cpu, offset);
     }
 }
@@ -1055,10 +1072,10 @@ void fgb_add_hl_sp(fgb_cpu* cpu, const fgb_instruction* ins) {
 void fgb_add_sp_imm(fgb_cpu* cpu, const fgb_instruction* ins) {
     const uint8_t operand = fgb_cpu_fetch(cpu);
     const int sp = cpu->regs.sp + (int8_t)operand;
-    cpu->regs.flags.c = (cpu->regs.sp & 0xFF) + (operand & 0xFF) > 0xFF;
-    cpu->regs.flags.h = (cpu->regs.sp & 0xF) + (operand & 0xF) > 0xF;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.z = 0;
+    set_flag(c, (cpu->regs.sp & 0xFF) + (operand & 0xFF) > 0xFF);
+    set_flag(h, (cpu->regs.sp & 0xF) + (operand & 0xF) > 0xF);
+    set_flag(n, 0);
+    set_flag(z, 0);
     cpu->regs.sp = sp & 0xFFFF;
 
     fgb_cpu_m_tick(cpu);
@@ -1676,10 +1693,10 @@ void fgb_ld_a_p_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
 void fgb_ld_hl_sp_imm(fgb_cpu* cpu, const fgb_instruction* ins) {
     const uint8_t operand = fgb_cpu_fetch(cpu);
     const int hl = cpu->regs.sp + (int8_t)operand;
-    cpu->regs.flags.c = (cpu->regs.sp & 0xFF) + (operand & 0xFF) > 0xFF;
-    cpu->regs.flags.h = (cpu->regs.sp & 0xF) + (operand & 0xF) > 0xF;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.z = 0;
+    set_flag(c, (cpu->regs.sp & 0xFF) + (operand & 0xFF) > 0xFF);
+    set_flag(h, (cpu->regs.sp & 0xF) + (operand & 0xF) > 0xF);
+    set_flag(n, 0);
+    set_flag(z, 0);
     cpu->regs.hl = hl & 0xFFFF;
 
     fgb_cpu_m_tick(cpu);
@@ -1701,28 +1718,28 @@ void fgb_jp_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
 
 void fgb_jp_z_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
     const uint16_t operand = fgb_cpu_fetch_u16(cpu);
-    if (cpu->regs.flags.z) {
+    if (get_flag(z)) {
         fgb_jp_(cpu, operand);
     }
 }
 
 void fgb_jp_c_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
     const uint16_t operand = fgb_cpu_fetch_u16(cpu);
-    if (cpu->regs.flags.c) {
+    if (get_flag(c)) {
         fgb_jp_(cpu, operand);
     }
 }
 
 void fgb_jp_nz_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
     const uint16_t operand = fgb_cpu_fetch_u16(cpu);
-    if (!cpu->regs.flags.z) {
+    if (!get_flag(z)) {
         fgb_jp_(cpu, operand);
     }
 }
 
 void fgb_jp_nc_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
     const uint16_t operand = fgb_cpu_fetch_u16(cpu);
-    if (!cpu->regs.flags.c) {
+    if (!get_flag(c)) {
         fgb_jp_(cpu, operand);
     }
 }
@@ -1737,28 +1754,28 @@ void fgb_call_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
 
 void fgb_call_z_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
     const uint16_t operand = fgb_cpu_fetch_u16(cpu);
-    if (cpu->regs.flags.z) {
+    if (get_flag(z)) {
         fgb_call(cpu, operand);
     }
 }
 
 void fgb_call_c_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
     const uint16_t operand = fgb_cpu_fetch_u16(cpu);
-    if (cpu->regs.flags.c) {
+    if (get_flag(c)) {
         fgb_call(cpu, operand);
     }
 }
 
 void fgb_call_nz_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
     const uint16_t operand = fgb_cpu_fetch_u16(cpu);
-    if (!cpu->regs.flags.z) {
+    if (!get_flag(z)) {
         fgb_call(cpu, operand);
     }
 }
 
 void fgb_call_nc_imm16(fgb_cpu* cpu, const fgb_instruction* ins) {
     const uint16_t operand = fgb_cpu_fetch_u16(cpu);
-    if (!cpu->regs.flags.c) {
+    if (!get_flag(c)) {
         fgb_call(cpu, operand);
     }
 }
@@ -1769,32 +1786,29 @@ void fgb_ret(fgb_cpu* cpu, const fgb_instruction* ins) {
 
 void fgb_ret_z(fgb_cpu* cpu, const fgb_instruction* ins) {
     fgb_cpu_m_tick(cpu);
-    if (cpu->regs.flags.z) {
+    if (get_flag(z)) {
         fgb_ret_(cpu);
     }
 }
 
 void fgb_ret_c(fgb_cpu* cpu, const fgb_instruction* ins) {
     fgb_cpu_m_tick(cpu);
-    if (cpu->regs.flags.c) {
+    if (get_flag(c)) {
         fgb_ret_(cpu);
-        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_ret_nz(fgb_cpu* cpu, const fgb_instruction* ins) {
     fgb_cpu_m_tick(cpu);
-    if (!cpu->regs.flags.z) {
+    if (!get_flag(z)) {
         fgb_ret_(cpu);
-        cpu->use_alt_cycles = true;
     }
 }
 
 void fgb_ret_nc(fgb_cpu* cpu, const fgb_instruction* ins) {
     fgb_cpu_m_tick(cpu);
-    if (!cpu->regs.flags.c) {
+    if (!get_flag(c)) {
         fgb_ret_(cpu);
-        cpu->use_alt_cycles = true;
     }
 }
 
@@ -1847,87 +1861,87 @@ void fgb_rst_7(fgb_cpu* cpu, const fgb_instruction* ins) {
 #define fgb_cb_bit_index(opcode) (((opcode) >> 3) & 7)
 
 static inline uint8_t fgb_cb_rlc(fgb_cpu* cpu, uint8_t value) {
-    cpu->regs.flags.c = value >> 7;
+    set_flag(c, value >> 7);
     value <<= 1;
-    value |= cpu->regs.flags.c;
-    cpu->regs.flags.z = value == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    value |= get_flag(c);
+    set_flag(z, value == 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
     return value;
 }
 
 static inline uint8_t fgb_cb_rrc(fgb_cpu* cpu, uint8_t value) {
-    cpu->regs.flags.c = value & 1;
+    set_flag(c, value & 1);
     value >>= 1;
-    value |= cpu->regs.flags.c << 7;
-    cpu->regs.flags.z = value == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    value |= get_flag(c) << 7;
+    set_flag(z, value == 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
     return value;
 }
 
 static inline uint8_t fgb_cb_rl(fgb_cpu* cpu, uint8_t value) {
-    const uint8_t c = cpu->regs.flags.c;
-    cpu->regs.flags.c = value >> 7;
+    const uint8_t c = get_flag(c);
+    set_flag(c, value >> 7);
     value <<= 1;
     value |= c;
-    cpu->regs.flags.z = value == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    set_flag(z, value == 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
     return value;
 }
 
 static inline uint8_t fgb_cb_rr(fgb_cpu* cpu, uint8_t value) {
-    const uint8_t c = cpu->regs.flags.c;
-    cpu->regs.flags.c = value & 1;
+    const uint8_t c = get_flag(c);
+    set_flag(c, value & 1);
     value >>= 1;
     value |= c << 7;
-    cpu->regs.flags.z = value == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    set_flag(z, value == 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
     return value;
 }
 
 static inline uint8_t fgb_cb_sla(fgb_cpu* cpu, uint8_t value) {
-    cpu->regs.flags.c = value >> 7;
+    set_flag(c, value >> 7);
     value <<= 1;
-    cpu->regs.flags.z = value == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    set_flag(z, value == 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
     return value;
 }
 
 static inline uint8_t fgb_cb_sra(fgb_cpu* cpu, uint8_t value) {
-    cpu->regs.flags.c = value & 1;
+    set_flag(c, value & 1);
     value = (int8_t)value >> 1;
-    cpu->regs.flags.z = value == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    set_flag(z, value == 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
     return value;
 }
 
 static inline uint8_t fgb_cb_swap(fgb_cpu* cpu, uint8_t value) {
     value = (value & 0x0F) << 4 | (value & 0xF0) >> 4;
-    cpu->regs.flags.z = value == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
-    cpu->regs.flags.c = 0;
+    set_flag(z, value == 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
+    set_flag(c, 0);
     return value;
 }
 
 static inline uint8_t fgb_cb_srl(fgb_cpu* cpu, uint8_t value) {
-    cpu->regs.flags.c = value & 1;
+    set_flag(c, value & 1);
     value >>= 1;
-    cpu->regs.flags.z = value == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 0;
+    set_flag(z, value == 0);
+    set_flag(n, 0);
+    set_flag(h, 0);
     return value;
 }
 
 static inline void fgb_cb_bit(fgb_cpu* cpu, uint8_t bit, uint8_t value) {
-    cpu->regs.flags.z = ((value >> bit) & 1) == 0;
-    cpu->regs.flags.n = 0;
-    cpu->regs.flags.h = 1;
+    set_flag(z, ((value >> bit) & 1) == 0);
+    set_flag(n, 0);
+    set_flag(h, 1);
 }
 
 #define fgb_cb_res(val, bit) ((val) & ~(1 << (bit)))

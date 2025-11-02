@@ -35,26 +35,30 @@ enum fgb_cpu_mode {
     CPU_MODE_EI,
 };
 
+enum fgb_cpu_flag {
+	CPU_FLAG_C = 1 << 4,
+	CPU_FLAG_H = 1 << 5,
+	CPU_FLAG_N = 1 << 6,
+	CPU_FLAG_Z = 1 << 7,
+
+	CPU_FLAG_c = CPU_FLAG_C,
+	CPU_FLAG_h = CPU_FLAG_H,
+	CPU_FLAG_n = CPU_FLAG_N,
+	CPU_FLAG_z = CPU_FLAG_Z,
+};
+
 typedef void (*fgb_cpu_bp_callback)(struct fgb_cpu* cpu, size_t bp, uint16_t addr);
 typedef void (*fgb_cpu_step_callback)(struct fgb_cpu* cpu);
 typedef void (*fgb_cpu_trace_callback)(struct fgb_cpu* cpu, uint16_t addr, uint32_t depth, const char* disasm);
 
 typedef struct fgb_cpu_regs {
-    union {
-        uint16_t af;
-        struct {
-            uint8_t f;
-            uint8_t a;
-        };
-        struct {
-            uint16_t : 4;
-            uint16_t c : 1;
-            uint16_t h : 1;
-            uint16_t n : 1;
-            uint16_t z : 1;
-            uint16_t : 8;
-        } flags;
-    };
+	union {
+	    uint16_t af;
+	    struct {
+	        uint8_t f;
+	        uint8_t a;
+	    };
+	};
 
     union {
         uint16_t bc;
@@ -100,7 +104,7 @@ typedef struct fgb_cpu {
     fgb_io io;
     fgb_ppu* ppu;
 
-    bool use_alt_cycles;
+    bool test_mode;
     
     bool ime;
     enum fgb_cpu_mode mode;
@@ -143,6 +147,27 @@ bool fgb_cpu_has_pending_interrupts(const fgb_cpu* cpu);
 
 void fgb_cpu_write(fgb_cpu* cpu, uint16_t addr, uint8_t value);
 uint8_t fgb_cpu_read(const fgb_cpu* cpu, uint16_t addr);
+
+static inline void fgb_cpu_set_flag(fgb_cpu* cpu, enum fgb_cpu_flag flag, bool value) {
+    if (value) {
+        cpu->regs.f |= flag;
+    }
+    else {
+        cpu->regs.f &= ~flag;
+    }
+}
+
+static inline void fgb_cpu_clear_flag(fgb_cpu* cpu, enum fgb_cpu_flag flag) {
+    cpu->regs.f &= ~flag;
+}
+
+static inline bool fgb_cpu_get_flag(const fgb_cpu* cpu, enum fgb_cpu_flag flag) {
+    return (cpu->regs.f & flag) != 0;
+}
+
+static inline void fgb_cpu_toggle_flag(fgb_cpu* cpu, enum fgb_cpu_flag flag) {
+    cpu->regs.f ^= flag;
+}
 
 // Debugging
 void fgb_cpu_dump_state(const fgb_cpu* cpu);

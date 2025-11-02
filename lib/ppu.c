@@ -62,7 +62,7 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
     memset(ppu->vram, 0, sizeof(ppu->vram));
     memset(ppu->oam, 0, sizeof(ppu->oam));
     memset(ppu->framebuffers, 0, sizeof(ppu->framebuffers));
-    memset(ppu->line_sprites, 0, sizeof(ppu->line_sprites));
+    memset(ppu->line_sprites, 0xFF, sizeof(ppu->line_sprites));
 
     ppu->back_buffer = 0;
     ppu->mode_cycles = 0;

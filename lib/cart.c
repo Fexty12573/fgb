@@ -9,10 +9,10 @@
 static uint8_t fgb_compute_header_checksum(const uint8_t* data);
 static uint32_t fgb_get_ram_size_bytes(const fgb_cart_header* header);
 static uint8_t fgb_cart_read_rom_only(const fgb_cart* cart, uint16_t addr);
-static uint8_t fgb_cart_read_mbc3(const fgb_cart* cart, uint16_t addr);
+static uint8_t fgb_cart_read_mbc1_3(const fgb_cart* cart, uint16_t addr);
 
 static void fgb_cart_write_rom_only(fgb_cart* cart, uint16_t addr, uint8_t value);
-static void fgb_cart_write_mbc3(fgb_cart* cart, uint16_t addr, uint8_t value);
+static void fgb_cart_write_mbc1_3(fgb_cart* cart, uint16_t addr, uint8_t value);
 
 static const uint8_t fgb_nintendo_logo[] = {
     0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
@@ -67,10 +67,18 @@ fgb_cart* fgb_cart_load(const uint8_t* data, size_t size) {
         cart->read = fgb_cart_read_rom_only;
         cart->write = fgb_cart_write_rom_only;
         break;
-    case CART_TYPE_MBC3_RAM_BATTERY:
-        cart->read = fgb_cart_read_mbc3;
-        cart->write = fgb_cart_write_mbc3;
-        cart->rom_bank = 1; // MBC3 starts with bank 1 selected
+    case CART_TYPE_MBC1:
+    case CART_TYPE_MBC1_RAM:
+    case CART_TYPE_MBC1_RAM_BATTERY:
+	case CART_TYPE_MBC3_RAM_BATTERY:
+    case CART_TYPE_MBC3_TIMER_BATTERY:
+    case CART_TYPE_MBC3:
+    case CART_TYPE_MBC3_RAM:
+    case CART_TYPE_MBC3_TIMER_RAM_BATTERY:
+		cart->read = fgb_cart_read_mbc1_3;
+        cart->write = fgb_cart_write_mbc1_3;
+		cart->rom_bank = 1; // MBC3 starts with bank 1 selected
+		cart->rom_bank_mask = (uint8_t)(rom_banks - 1ull);
 
         for (size_t i = 0; i < rom_banks; i++) {
             cart->rom_banks[i] = &cart->rom[i * FGB_CART_ROM_BANK_SIZE];
@@ -91,29 +99,22 @@ fgb_cart* fgb_cart_load(const uint8_t* data, size_t size) {
             }
         }
         break;
-    case CART_TYPE_ROM_RAM:
-    case CART_TYPE_ROM_RAM_BATTERY:
-    case CART_TYPE_MBC1:
-    case CART_TYPE_MBC1_RAM:
-    case CART_TYPE_MBC1_RAM_BATTERY:
-    case CART_TYPE_MBC2:
-    case CART_TYPE_MBC2_BATTERY:
-    case CART_TYPE_MBC3_TIMER_BATTERY:
-    case CART_TYPE_MBC3:
-    case CART_TYPE_MBC3_RAM:
-    case CART_TYPE_MBC3_TIMER_RAM_BATTERY:
-    case CART_TYPE_MBC5:
-    case CART_TYPE_MBC5_RAM:
-    case CART_TYPE_MBC5_RAM_BATTERY:
-    case CART_TYPE_MBC5_RUMBLE:
-    case CART_TYPE_MBC5_RUMBLE_RAM:
-    case CART_TYPE_MBC5_RUMBLE_RAM_BATTERY:
-    case CART_TYPE_HUC3:
-    case CART_TYPE_HUC1_RAM_BATTERY:
-    default:
-        log_warn("Only ROM_ONLY Carts are supported. Game will not work properly");
-        break;
-    }
+	case CART_TYPE_ROM_RAM:
+	case CART_TYPE_ROM_RAM_BATTERY:
+	case CART_TYPE_MBC2:
+	case CART_TYPE_MBC2_BATTERY:
+	case CART_TYPE_MBC5:
+	case CART_TYPE_MBC5_RAM:
+	case CART_TYPE_MBC5_RAM_BATTERY:
+	case CART_TYPE_MBC5_RUMBLE:
+	case CART_TYPE_MBC5_RUMBLE_RAM:
+	case CART_TYPE_MBC5_RUMBLE_RAM_BATTERY:
+	case CART_TYPE_HUC3:
+	case CART_TYPE_HUC1_RAM_BATTERY:
+	default:
+		log_warn("Only ROM_ONLY Carts are supported. Game will not work properly");
+		break;
+	}
 
     memcpy(cart->rom, data, size);
     cart->rom_size = size;
@@ -166,7 +167,7 @@ uint8_t fgb_cart_read_rom_only(const fgb_cart* cart, uint16_t addr) {
     return cart->rom[addr];
 }
 
-uint8_t fgb_cart_read_mbc3(const fgb_cart* cart, uint16_t addr) {
+uint8_t fgb_cart_read_mbc1_3(const fgb_cart* cart, uint16_t addr) {
     if (addr < 0x4000) {
         // Bank 0
         return cart->rom[addr];
@@ -198,7 +199,7 @@ void fgb_cart_write_rom_only(fgb_cart* cart, uint16_t addr, uint8_t value) {
     log_warn("Attempt to write to ROM_ONLY cart at 0x%04X", addr);
 }
 
-void fgb_cart_write_mbc3(fgb_cart* cart, uint16_t addr, uint8_t value) {
+void fgb_cart_write_mbc1_3(fgb_cart* cart, uint16_t addr, uint8_t value) {
     if (addr < 0x2000) {
         // Enable/Disable RAM
         cart->ram_enabled = (value & 0x0F) == 0x0A;
