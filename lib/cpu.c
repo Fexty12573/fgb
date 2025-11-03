@@ -225,10 +225,6 @@ int fgb_cpu_execute(fgb_cpu* cpu) {
     // the caller isn't blocked
     const uint32_t start_cycles = cpu->cycles_this_frame;
 
-    if (cpu->mode != CPU_MODE_NORMAL) {
-        log_warn("CPU is in mode %d", cpu->mode);
-	}
-
     switch (cpu->mode) {
     case CPU_MODE_NORMAL:
         fgb_cpu_run_instruction(cpu, fgb_cpu_fetch_instruction(cpu));

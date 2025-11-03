@@ -86,13 +86,15 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
 
     fgb_queue_clear(&ppu->bg_wnd_fifo);
 	fgb_queue_clear(&ppu->sprite_fifo);
-	ppu->fetch_step = FETCH_STEP_TILE;
+	ppu->fetch_step = FETCH_STEP_TILE_0;
 	ppu->fetch_tile_id = 0;
 	ppu->fetch_x = 0;
 	ppu->fetch_tile_data_lo = 0;
 	ppu->fetch_tile_data_hi = 0;
 	ppu->is_first_fetch = true;
-	ppu->reset_fetch = false;
+	ppu->sprite_fetch_active = false;
+	ppu->processed_pixels = 0;
+	ppu->framebuffer_x = 0;
 
     ppu->oam_scan_done = false;
     ppu->frames_rendered = 0;
@@ -217,9 +219,9 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
             ppu->framebuffer_x = 0;
             ppu->fetch_x = 0;
 			ppu->is_first_fetch = true;
-			ppu->reset_fetch = false;
             ppu->processed_pixels = 0;
-			ppu->fetch_step = FETCH_STEP_TILE;
+			ppu->fetch_step = FETCH_STEP_TILE_0;
+            ppu->sprite_fetch_active = false;
 			fgb_queue_clear(&ppu->bg_wnd_fifo);
 
 			// Transition to HBlank
@@ -594,54 +596,40 @@ void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
 }
 
 void fgb_ppu_pixel_fetcher_tick(fgb_ppu* ppu) {
-    if (ppu->mode_cycles % 2 != ppu->fetch_phase && ppu->fetch_step != FETCH_STEP_PUSH) {
-        // Fetcher works every 2 cycles
-        // However, if the PUSH step is delayed due to a full FIFO, it will
-		// try to push every cycle until successful
-        return; 
-	}
-
-    switch (ppu->fetch_step) {
-    case FETCH_STEP_TILE: {
+    switch (ppu->fetch_step++) {
+    case FETCH_STEP_TILE_0: {
 		int offset = ppu->fetch_x + ((ppu->scroll.x / 8) & 0x1F);
 		offset += TILE_MAP_WIDTH * (((ppu->ly + ppu->scroll.y) & 0xFF) / 8);
         offset += TILE_MAP_OFFSET(ppu->lcd_control.bg_tile_map);
         ppu->fetch_tile_id = ppu->vram[offset];
-		ppu->fetch_step = FETCH_STEP_DATA_LOW;
     } break;
-    case FETCH_STEP_DATA_LOW: {
+    case FETCH_STEP_TILE_1:
+        break;
+    case FETCH_STEP_DATA_LOW_0: {
         const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->fetch_tile_id, false);
         const int tile_y = 2 * ((ppu->ly + ppu->scroll.y) % 8);
 		ppu->fetch_tile_data_lo = tile->data[tile_y];
-		ppu->fetch_step = FETCH_STEP_DATA_HIGH;
     } break;
-    case FETCH_STEP_DATA_HIGH: {
+    case FETCH_STEP_DATA_LOW_1:
+        break;
+    case FETCH_STEP_DATA_HIGH_0: {
         const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->fetch_tile_id, false);
 		const int tile_y = 2 * ((ppu->ly + ppu->scroll.y) % 8);
 		ppu->fetch_tile_data_hi = tile->data[tile_y + 1];
 
         if (ppu->is_first_fetch) {
             // The first time on each scanline the first 3 steps are repeated
-            ppu->fetch_step = FETCH_STEP_TILE;
+            ppu->fetch_step = FETCH_STEP_TILE_0;
 			ppu->is_first_fetch = false;
-        } else {
-            ppu->fetch_step = FETCH_STEP_PUSH;
         }
 	} break;
-    case FETCH_STEP_PUSH: {
+    case FETCH_STEP_DATA_HIGH_1:
+    case FETCH_STEP_PUSH_0:
+        break;
+    case FETCH_STEP_PUSH_1: {
         if (!fgb_queue_empty(&ppu->bg_wnd_fifo)) {
+			ppu->fetch_step = FETCH_STEP_PUSH_1; // Wait until there is space in the FIFO
             break;
-        }
-
-        if (ppu->reset_fetch) {
-            ppu->fetch_step = FETCH_STEP_TILE;
-			ppu->reset_fetch = false;
-            ppu->fetch_x++;
-
-            // Adjust phase for next fetch in case PUSH
-			// took an odd number of cycles
-			ppu->fetch_phase = ppu->mode_cycles % 2;
-			break;
         }
 
         for (int x = 0; x < 8; x++) {
@@ -650,9 +638,8 @@ void fgb_ppu_pixel_fetcher_tick(fgb_ppu* ppu) {
             fgb_queue_push(&ppu->bg_wnd_fifo, pixel);
 		}
 
-		// Wait 1 extra cycle before fetching the next tile
-		// because the PUSH step takes 2 cycles
-		ppu->reset_fetch = true;
+        ppu->fetch_step = FETCH_STEP_TILE_0;
+        ppu->fetch_x++;
     } break;
     }
 }
@@ -662,8 +649,7 @@ void fgb_ppu_lcd_push(fgb_ppu* ppu) {
         return;
 	}
 
-    ppu->processed_pixels++;
-    if (ppu->processed_pixels < (ppu->scroll.x % 8)) {
+    if (++ppu->processed_pixels < (ppu->scroll.x % 8)) {
         // Skip pixels until we reach the scroll offset
         fgb_queue_pop(&ppu->bg_wnd_fifo);
         return;

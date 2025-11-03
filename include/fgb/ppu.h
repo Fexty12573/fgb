@@ -39,10 +39,15 @@ enum fgb_ppu_mode {
 };
 
 enum fgb_fetch_step {
-	FETCH_STEP_TILE,
-    FETCH_STEP_DATA_LOW,
-	FETCH_STEP_DATA_HIGH,
-	FETCH_STEP_PUSH
+	// 2 T-cycles each
+	FETCH_STEP_TILE_0,
+	FETCH_STEP_TILE_1,
+    FETCH_STEP_DATA_LOW_0,
+    FETCH_STEP_DATA_LOW_1,
+	FETCH_STEP_DATA_HIGH_0,
+	FETCH_STEP_DATA_HIGH_1,
+	FETCH_STEP_PUSH_0,
+	FETCH_STEP_PUSH_1,
 };
 
 typedef struct fgb_palette {
@@ -98,13 +103,14 @@ typedef struct fgb_ppu {
     fgb_queue bg_wnd_fifo;
 	fgb_queue sprite_fifo;
 	enum fgb_fetch_step fetch_step;
-    int fetch_tile_id;
 	int fetch_x;
+
+    // Fetcher internal storage
+    int fetch_tile_id;
 	uint8_t fetch_tile_data_lo;
 	uint8_t fetch_tile_data_hi;
     bool is_first_fetch;
-    bool reset_fetch;
-    uint8_t fetch_phase;
+    bool sprite_fetch_active;
 
     int back_buffer;
     mtx_t buffer_mutex;
