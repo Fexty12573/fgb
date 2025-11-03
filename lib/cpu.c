@@ -137,7 +137,7 @@ void fgb_cpu_tick(fgb_cpu *cpu) {
 	}
 
     fgb_timer_tick(&cpu->timer);
-    fgb_ppu_tick(cpu->ppu, 1);
+    fgb_ppu_tick(cpu->ppu);
     // TODO:
     // - Tick APU
     // - Maybe extract DMA handling from PPU tick?

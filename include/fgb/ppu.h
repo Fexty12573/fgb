@@ -29,11 +29,20 @@
 #define PPU_SPRITE_H            TILE_HEIGHT
 #define PPU_SPRITE_H16          (2 * TILE_HEIGHT)
 
+#define PPU_PIXEL_FIFO_SIZE     8
+
 enum fgb_ppu_mode {
     PPU_MODE_HBLANK = 0,
     PPU_MODE_VBLANK,
     PPU_MODE_OAM_SCAN,
     PPU_MODE_DRAW
+};
+
+enum fgb_fetch_step {
+	FETCH_STEP_TILE,
+    FETCH_STEP_DATA_LOW,
+	FETCH_STEP_DATA_HIGH,
+	FETCH_STEP_PUSH
 };
 
 typedef struct fgb_palette {
@@ -61,19 +70,48 @@ typedef struct fgb_sprite {
     };
 } fgb_sprite;
 
+typedef struct fgb_pixel {
+    uint8_t color : 2;
+	uint8_t palette : 1;
+    uint8_t sprite_prio : 1;
+    uint8_t bg_prio : 1;
+} fgb_pixel;
+
+typedef struct fgb_queue {
+	fgb_pixel pixels[PPU_PIXEL_FIFO_SIZE];
+	int push_index;
+	int pop_index;
+    int count;
+} fgb_queue;
+
 typedef struct fgb_ppu {
     uint8_t vram[PPU_VRAM_SIZE];
     uint8_t oam[PPU_OAM_SIZE];
     uint32_t framebuffers[PPU_FRAMEBUFFER_COUNT][SCREEN_WIDTH * SCREEN_HEIGHT];
+	int framebuffer_x; // Current X position in the framebuffer (actual number of pixels drawn)
+    int processed_pixels; // Number of pixels pushed OR discarded from the FIFO
 
     // For keeping track of which sprites were rendered on which scanline
     uint8_t line_sprites[SCREEN_HEIGHT][PPU_SCANLINE_SPRITES];
+
+    // Pixel FIFO
+    fgb_queue bg_wnd_fifo;
+	fgb_queue sprite_fifo;
+	enum fgb_fetch_step fetch_step;
+    int fetch_tile_id;
+	int fetch_x;
+	uint8_t fetch_tile_data_lo;
+	uint8_t fetch_tile_data_hi;
+    bool is_first_fetch;
+    bool reset_fetch;
+    uint8_t fetch_phase;
 
     int back_buffer;
     mtx_t buffer_mutex;
 
     uint32_t mode_cycles; // Cycles for the current mode
     uint32_t frame_cycles; // Cycles for the current frame
+	uint32_t hblank_cycles; // Cycles spent in HBlank
 
     int pixels_drawn; // Number of pixels drawn in the current scanline
 
@@ -181,7 +219,7 @@ uint8_t fgb_tile_get_pixel(const fgb_tile* tile, uint8_t x, uint8_t y);
 uint32_t fgb_ppu_get_bg_color(const fgb_ppu* ppu, uint8_t pixel_index);
 uint32_t fgb_ppu_get_obj_color(const fgb_ppu* ppu, uint8_t pixel_index, int palette);
 
-bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles);
+bool fgb_ppu_tick(fgb_ppu* ppu);
 
 void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value);
 uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr);

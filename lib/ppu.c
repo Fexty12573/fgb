@@ -9,7 +9,9 @@
 #define OAM_SCAN_CYCLES             (80)  // T-cycles
 #define SCANLINE_CYCLES             (172) // T-cycles
 #define HBLANK_CYCLES               (204) // T-cycles
-#define VBLANK_CYCLES               (456) // T-cycles
+#define SCANLINE_CYCLES             (456) // T-cycles
+#define VBLANK_CYCLES               SCANLINE_CYCLES
+#define HBLANK_MAX_CYCLES           (SCANLINE_CYCLES - OAM_SCAN_CYCLES)
 
 #define TILE_MAP_BASE               (0x9800 - 0x8000)
 #define TILE_MAP_WIDTH              32
@@ -22,8 +24,20 @@
 #define TILE_DATA_BLOCK_OFFSET(BLOCK)    (TILE_DATA_BLOCK_BASE + (BLOCK) * TILE_BLOCK_SIZE)
 #define TILE_DATA_OFFSET(BLOCK, TILE)    (TILE_DATA_BLOCK_OFFSET(BLOCK) + (TILE) * TILE_SIZE_BYTES)
 
+#define TILE_PIXEL(LSB, MSB, X)    (((((MSB) >> (7 - (X))) & 1) << 1) | (((LSB) >> (7 - (X))) & 1))
+
 static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count);
 static void fgb_ppu_do_oam_scan(fgb_ppu* ppu);
+static void fgb_ppu_pixel_fetcher_tick(fgb_ppu* ppu);
+static void fgb_ppu_lcd_push(fgb_ppu* ppu);
+static void fgb_ppu_try_stat_irq(const fgb_ppu* ppu);
+
+static void fgb_queue_push(fgb_queue* queue, fgb_pixel pixel);
+static fgb_pixel fgb_queue_pop(fgb_queue* queue);
+static size_t fgb_queue_size(const fgb_queue* queue);
+static bool fgb_queue_full(const fgb_queue* queue);
+static bool fgb_queue_empty(const fgb_queue* queue);
+static void fgb_queue_clear(fgb_queue* queue);
 
 fgb_ppu* fgb_ppu_create(void) {
     fgb_ppu* ppu = malloc(sizeof(fgb_ppu));
@@ -69,6 +83,16 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
     ppu->frame_cycles = 0;
     ppu->pixels_drawn = 0;
     ppu->sprite_count = 0;
+
+    fgb_queue_clear(&ppu->bg_wnd_fifo);
+	fgb_queue_clear(&ppu->sprite_fifo);
+	ppu->fetch_step = FETCH_STEP_TILE;
+	ppu->fetch_tile_id = 0;
+	ppu->fetch_x = 0;
+	ppu->fetch_tile_data_lo = 0;
+	ppu->fetch_tile_data_hi = 0;
+	ppu->is_first_fetch = true;
+	ppu->reset_fetch = false;
 
     ppu->oam_scan_done = false;
     ppu->frames_rendered = 0;
@@ -138,15 +162,15 @@ uint32_t fgb_ppu_get_obj_color(const fgb_ppu* ppu, uint8_t pixel_index, int pale
     return ppu->obj_palette.colors[pal_index];
 }
 
-bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
+bool fgb_ppu_tick(fgb_ppu* ppu) {
     if (!ppu->cpu) {
         log_error("PPU: CPU not set");
         return false;
     }
 
-    ppu->mode_cycles += cycles;
-    ppu->frame_cycles += cycles;
-    ppu->dma_cycles += cycles;
+    ppu->mode_cycles++;
+    ppu->frame_cycles++;
+    ppu->dma_cycles++;
 
     if (ppu->dma_active && ppu->dma_cycles > 4) {
         ppu->oam_blocked = true;
@@ -181,55 +205,48 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
             ppu->oam_scan_done = false; // Set this for the next scanline
             ppu->stat.mode = PPU_MODE_DRAW;
             ppu->pixels_drawn = 0; // Reset pixel count for the new scanline
-
-            if (ppu->mode_cycles > 0) {
-                // Immediately render pixels if there are leftover cycles
-                fgb_ppu_render_pixels(ppu, ppu->mode_cycles);
-            }
         }
         break;
 
     case PPU_MODE_DRAW:
-        // We draw `cycles` pixels for each call to fgb_ppu_tick
-        fgb_ppu_render_pixels(ppu, cycles);
+		fgb_ppu_pixel_fetcher_tick(ppu); // Fetch pixels into the FIFO
+		fgb_ppu_lcd_push(ppu); // Try to push pixels to the framebuffer
 
-        if (ppu->mode_cycles >= SCANLINE_CYCLES) {
-            ppu->mode_cycles -= SCANLINE_CYCLES;
-            ppu->ly++;
+        if (ppu->framebuffer_x >= SCREEN_WIDTH) {
+			// Reset Fetcher and FIFO state for the next line
+            ppu->framebuffer_x = 0;
+            ppu->fetch_x = 0;
+			ppu->is_first_fetch = true;
+			ppu->reset_fetch = false;
+            ppu->processed_pixels = 0;
+			ppu->fetch_step = FETCH_STEP_TILE;
+			fgb_queue_clear(&ppu->bg_wnd_fifo);
 
-            if (ppu->lyc == ppu->ly) {
-                ppu->stat.lyc_eq_ly = 1;
-                if (ppu->stat.lyc_int) {
-                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
-                }
-            } else {
-                ppu->stat.lyc_eq_ly = 0;
-            }
+			// Transition to HBlank
+            ppu->hblank_cycles = HBLANK_MAX_CYCLES - ppu->mode_cycles;
+			ppu->mode_cycles = 0;
 
             ppu->stat.mode = PPU_MODE_HBLANK;
-            if (ppu->stat.hblank_int) {
-                fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
-            }
+            fgb_ppu_try_stat_irq(ppu);
         }
         break;
 
     case PPU_MODE_HBLANK:
-        if (ppu->mode_cycles >= HBLANK_CYCLES) {
-            ppu->mode_cycles -= HBLANK_CYCLES;
+        if (ppu->mode_cycles >= ppu->hblank_cycles) {
+			ppu->mode_cycles = 0;
+
+            ppu->ly++;
+
+			ppu->stat.lyc_eq_ly = ppu->lyc == ppu->ly;
 
             if (ppu->ly == 144) {
                 ppu->stat.mode = PPU_MODE_VBLANK;
                 fgb_cpu_request_interrupt(ppu->cpu, IRQ_VBLANK);
-
-                if (ppu->stat.vblank_int) {
-                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
-                }
             } else {
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
-                if (ppu->stat.oam_int) {
-                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
-                }
             }
+
+            fgb_ppu_try_stat_irq(ppu);
         }
         break;
 
@@ -237,6 +254,10 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
         if (ppu->mode_cycles >= VBLANK_CYCLES) {
             ppu->mode_cycles -= VBLANK_CYCLES;
             ppu->ly++;
+
+            ppu->stat.lyc_eq_ly = ppu->lyc == ppu->ly;
+			fgb_ppu_try_stat_irq(ppu);
+
             if (ppu->ly >= 154) {
                 ppu->ly = 0;
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
@@ -253,9 +274,7 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
                 // Clear the line sprites for the next frame
                 memset(ppu->line_sprites, 0xFF, sizeof(ppu->line_sprites));
 
-                if (ppu->stat.oam_int) {
-                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
-                }
+                fgb_ppu_try_stat_irq(ppu);
 
                 return true;
             }
@@ -263,7 +282,7 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
         break;
     default:
         log_error("PPU: Unknown mode %d", ppu->stat.mode);
-        ppu->stat.mode = PPU_MODE_OAM_SCAN; // Reset to a known state
+        ppu->stat.mode = PPU_MODE_OAM_SCAN;
         break;
     }
 
@@ -338,7 +357,7 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
         return ppu->lcd_control.value;
 
     case 0xFF41:
-        return ppu->stat.value;
+		return ppu->stat.value | 0x80; // Unused bit 7 is always 1
 
     case 0xFF42:
         return ppu->scroll.y;
@@ -572,4 +591,134 @@ void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
     }
 
     ppu->oam_scan_done = true;
+}
+
+void fgb_ppu_pixel_fetcher_tick(fgb_ppu* ppu) {
+    if (ppu->mode_cycles % 2 != ppu->fetch_phase && ppu->fetch_step != FETCH_STEP_PUSH) {
+        // Fetcher works every 2 cycles
+        // However, if the PUSH step is delayed due to a full FIFO, it will
+		// try to push every cycle until successful
+        return; 
+	}
+
+    switch (ppu->fetch_step) {
+    case FETCH_STEP_TILE: {
+		int offset = ppu->fetch_x + ((ppu->scroll.x / 8) & 0x1F);
+		offset += TILE_MAP_WIDTH * (((ppu->ly + ppu->scroll.y) & 0xFF) / 8);
+        offset += TILE_MAP_OFFSET(ppu->lcd_control.bg_tile_map);
+        ppu->fetch_tile_id = ppu->vram[offset];
+		ppu->fetch_step = FETCH_STEP_DATA_LOW;
+    } break;
+    case FETCH_STEP_DATA_LOW: {
+        const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->fetch_tile_id, false);
+        const int tile_y = 2 * ((ppu->ly + ppu->scroll.y) % 8);
+		ppu->fetch_tile_data_lo = tile->data[tile_y];
+		ppu->fetch_step = FETCH_STEP_DATA_HIGH;
+    } break;
+    case FETCH_STEP_DATA_HIGH: {
+        const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->fetch_tile_id, false);
+		const int tile_y = 2 * ((ppu->ly + ppu->scroll.y) % 8);
+		ppu->fetch_tile_data_hi = tile->data[tile_y + 1];
+
+        if (ppu->is_first_fetch) {
+            // The first time on each scanline the first 3 steps are repeated
+            ppu->fetch_step = FETCH_STEP_TILE;
+			ppu->is_first_fetch = false;
+        } else {
+            ppu->fetch_step = FETCH_STEP_PUSH;
+        }
+	} break;
+    case FETCH_STEP_PUSH: {
+        if (!fgb_queue_empty(&ppu->bg_wnd_fifo)) {
+            break;
+        }
+
+        if (ppu->reset_fetch) {
+            ppu->fetch_step = FETCH_STEP_TILE;
+			ppu->reset_fetch = false;
+            ppu->fetch_x++;
+
+            // Adjust phase for next fetch in case PUSH
+			// took an odd number of cycles
+			ppu->fetch_phase = ppu->mode_cycles % 2;
+			break;
+        }
+
+        for (int x = 0; x < 8; x++) {
+			const uint8_t pixel_index = TILE_PIXEL(ppu->fetch_tile_data_lo, ppu->fetch_tile_data_hi, x);
+            const fgb_pixel pixel = { pixel_index, 0, 0, 0 };
+            fgb_queue_push(&ppu->bg_wnd_fifo, pixel);
+		}
+
+		// Wait 1 extra cycle before fetching the next tile
+		// because the PUSH step takes 2 cycles
+		ppu->reset_fetch = true;
+    } break;
+    }
+}
+
+void fgb_ppu_lcd_push(fgb_ppu* ppu) {
+    if (fgb_queue_empty(&ppu->bg_wnd_fifo)) {
+        return;
+	}
+
+    ppu->processed_pixels++;
+    if (ppu->processed_pixels < (ppu->scroll.x % 8)) {
+        // Skip pixels until we reach the scroll offset
+        fgb_queue_pop(&ppu->bg_wnd_fifo);
+        return;
+    }
+
+	uint32_t* framebuffer = ppu->framebuffers[ppu->back_buffer];
+	const uint32_t color = fgb_ppu_get_bg_color(ppu, fgb_queue_pop(&ppu->bg_wnd_fifo).color);
+
+	framebuffer[ppu->ly * SCREEN_WIDTH + ppu->framebuffer_x] = color;
+	ppu->framebuffer_x++;
+}
+
+void fgb_ppu_try_stat_irq(const fgb_ppu* ppu) {
+    if ((ppu->stat.lyc_eq_ly && ppu->stat.lyc_int) ||
+        (ppu->stat.mode == PPU_MODE_HBLANK && ppu->stat.hblank_int) ||
+        (ppu->stat.mode == PPU_MODE_OAM_SCAN && ppu->stat.oam_int) ||
+        (ppu->stat.mode == PPU_MODE_VBLANK && (ppu->stat.vblank_int || ppu->stat.oam_int))) {
+        fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
+    }
+}
+
+void fgb_queue_push(fgb_queue* queue, fgb_pixel pixel) {
+    if (fgb_queue_full(queue)) {
+        log_warn("PPU Pixel Queue Overflow");
+        return;
+	}
+
+    queue->pixels[queue->push_index] = pixel;
+	queue->push_index = (queue->push_index + 1) % PPU_PIXEL_FIFO_SIZE;
+    queue->count++;
+}
+
+fgb_pixel fgb_queue_pop(fgb_queue* queue) {
+    if (fgb_queue_empty(queue)) {
+        log_warn("PPU Pixel Queue Underflow");
+        return (fgb_pixel) { 0, 0, 0, 0 };
+    }
+
+    const fgb_pixel pixel = queue->pixels[queue->pop_index];
+    queue->pop_index = (queue->pop_index + 1) % PPU_PIXEL_FIFO_SIZE;
+	queue->count--;
+
+	return pixel;
+}
+
+bool fgb_queue_full(const fgb_queue* queue) {
+	return queue->count >= PPU_PIXEL_FIFO_SIZE;
+}
+
+bool fgb_queue_empty(const fgb_queue* queue) {
+	return queue->count == 0;
+}
+
+void fgb_queue_clear(fgb_queue* queue) {
+    queue->push_index = 0;
+	queue->pop_index = 0;
+	queue->count = 0;
 }
