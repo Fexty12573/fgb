@@ -70,7 +70,7 @@ typedef struct fgb_sprite {
             uint8_t palette : 1;
             uint8_t x_flip : 1;
             uint8_t y_flip : 1;
-            uint8_t priority : 1; // 0 = in front of background, 1 = behind background
+            uint8_t priority : 1; // 0 = in front of background, 1 = behind background (*)
         };
     };
 } fgb_sprite;
@@ -78,8 +78,8 @@ typedef struct fgb_sprite {
 typedef struct fgb_pixel {
     uint8_t color : 2;
 	uint8_t palette : 1;
-    uint8_t sprite_prio : 1;
-    uint8_t bg_prio : 1;
+    uint8_t sprite_prio : 1; // Only relevant for CGB sprites
+    uint8_t bg_prio : 1; // See fgb_sprite::priority
 } fgb_pixel;
 
 typedef struct fgb_queue {
@@ -102,15 +102,21 @@ typedef struct fgb_ppu {
     // Pixel FIFO
     fgb_queue bg_wnd_fifo;
 	fgb_queue sprite_fifo;
-	enum fgb_fetch_step fetch_step;
+	enum fgb_fetch_step bg_wnd_fetch_step;
+    enum fgb_fetch_step sprite_fetch_step;
 	int fetch_x;
 
     // Fetcher internal storage
     int fetch_tile_id;
-	uint8_t fetch_tile_data_lo;
-	uint8_t fetch_tile_data_hi;
+	uint8_t bg_wnd_tile_lo;
+	uint8_t bg_wnd_tile_hi;
+    uint8_t sprite_tile_lo;
+    uint8_t sprite_tile_hi;
     bool is_first_fetch;
     bool sprite_fetch_active;
+    bool bg_wnd_fetch_active;
+    int sprite_index; // Index of the next sprite to evaluate during pixel fetching
+    const fgb_sprite* current_sprite; // Current sprite being fetched
 
     int back_buffer;
     mtx_t buffer_mutex;
