@@ -176,9 +176,7 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
     fgb_timer_reset(&cpu->timer);
 }
 
-void fgb_cpu_step(fgb_cpu* cpu) {
-    int cycles = 0;
-
+void fgb_cpu_run_frame(fgb_cpu* cpu) {
     if (cpu->debugging && !cpu->do_step) {
         return;
     }
@@ -186,7 +184,7 @@ void fgb_cpu_step(fgb_cpu* cpu) {
     cpu->cycles_this_frame = 0;
 
     while (cpu->cycles_this_frame < FGB_CYCLES_PER_FRAME) {
-        cycles += fgb_cpu_execute(cpu);
+        fgb_cpu_step(cpu);
 
         for (size_t i = 0; i < FGB_CPU_MAX_BREAKPOINTS; i++) {
             if (cpu->breakpoints[i] != FGB_BP_ADDR_NONE && cpu->regs.pc == cpu->breakpoints[i]) {
@@ -220,9 +218,7 @@ void fgb_cpu_step(fgb_cpu* cpu) {
     }
 }
 
-int fgb_cpu_execute(fgb_cpu* cpu) {
-    // If the CPU is halted, just return max cycles so
-    // the caller isn't blocked
+int fgb_cpu_step(fgb_cpu* cpu) {
     const uint32_t start_cycles = cpu->cycles_this_frame;
 
     switch (cpu->mode) {

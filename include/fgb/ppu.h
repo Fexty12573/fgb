@@ -114,7 +114,6 @@ typedef struct fgb_ppu {
     uint8_t sprite_tile_hi;
     bool is_first_fetch;
     bool sprite_fetch_active;
-    bool bg_wnd_fetch_active;
     int sprite_index; // Index of the next sprite to evaluate during pixel fetching
     const fgb_sprite* current_sprite; // Current sprite being fetched
 
@@ -224,6 +223,7 @@ void fgb_ppu_reset(fgb_ppu* ppu);
 const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu);
 void fgb_ppu_lock_buffer(fgb_ppu* ppu);
 void fgb_ppu_unlock_buffer(fgb_ppu* ppu);
+void fgb_ppu_swap_buffers(fgb_ppu* ppu);
 
 int fgb_ppu_get_tile_id(const fgb_ppu* ppu, int tile_map, int x, int y);
 const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_sprite);

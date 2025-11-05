@@ -13,7 +13,7 @@
 
 #define FGB_CPU_CLOCK_SPEED     4194304 // 4.194304 MHz
 #define FGB_SCREEN_REFRESH_RATE 59.7275 // ~59.7 Hz
-#define FGB_CYCLES_PER_FRAME    ((int)(FGB_CPU_CLOCK_SPEED / FGB_SCREEN_REFRESH_RATE))
+#define FGB_CYCLES_PER_FRAME    ((int)(FGB_CPU_CLOCK_SPEED / FGB_SCREEN_REFRESH_RATE)) // 70224 T-cycles
 #define FGB_CPU_MAX_BREAKPOINTS 16
 
 
@@ -140,8 +140,8 @@ void fgb_cpu_destroy(fgb_cpu* cpu);
 void fgb_cpu_tick(fgb_cpu* cpu); // Tick 1 T-cycle
 void fgb_cpu_m_tick(fgb_cpu* cpu); // Tick 1 M-cycle (4 T-cycles)
 void fgb_cpu_reset(fgb_cpu* cpu);
-void fgb_cpu_step(fgb_cpu* cpu); // Executes FGB_CYCLES_PER_FRAME cycles
-int fgb_cpu_execute(fgb_cpu* cpu); // Executes a single instruction and returns its cycles
+void fgb_cpu_run_frame(fgb_cpu* cpu); // Executes FGB_CYCLES_PER_FRAME cycles
+int fgb_cpu_step(fgb_cpu* cpu); // Executes a single instruction and returns its cycles
 void fgb_cpu_request_interrupt(fgb_cpu* cpu, enum fgb_cpu_interrupt interrupt);
 bool fgb_cpu_has_pending_interrupts(const fgb_cpu* cpu);
 

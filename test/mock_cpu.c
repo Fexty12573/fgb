@@ -77,7 +77,7 @@ void mock_cpu_get_state(struct state* state) {
 }
 
 int mock_cpu_step(void) {
-    return fgb_cpu_execute(cpu);
+    return fgb_cpu_step(cpu);
 }
 
 uint8_t mock_mmu_read(const fgb_mmu* mmu, uint16_t addr) {

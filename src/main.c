@@ -34,6 +34,7 @@ struct app {
     int block_to_display;
     double render_framerate;
     double emu_framerate;
+    double emu_update_time;
     bool reset_keep_breakpoints;
 
     float main_scale;
@@ -253,7 +254,7 @@ static void imgui_init(void) {
     igStyleColorsDark(style);
 }
 
-static void render_tilesets(int tiles_per_row, const ImTextureID* block_textures) {
+static void render_tilesets(int tiles_per_row, const uint32_t* block_textures) {
     igBegin("Tilesets", NULL, ImGuiWindowFlags_AlwaysAutoResize);
     for (int i = 0; i < TILE_BLOCK_COUNT; i++) {
         const int tile_rows = TILES_PER_BLOCK / tiles_per_row;
@@ -775,7 +776,7 @@ static int emu_run(void* arg) {
     while (g_app.running && g_app.emulate) {
         const double start_time = glfwGetTime();
 
-        fgb_cpu_step(emu->cpu);
+        fgb_cpu_run_frame(emu->cpu);
 
         const double end_time = glfwGetTime();
         const double elapsed = end_time - start_time;
@@ -789,6 +790,7 @@ static int emu_run(void* arg) {
 
         const double actual_frametime = glfwGetTime() - start_time;
         g_app.emu_framerate = 1.0 / actual_frametime;
+        g_app.emu_update_time = elapsed;
 
         error = frametime - actual_frametime;
     }
@@ -925,7 +927,14 @@ int main(int argc, char** argv) {
 
         if (current_time - last_title_update >= 1.0) {
             char title[256];
-            snprintf(title, sizeof(title), "fgb - FPS: %.2f, Emu FPS: %.2f", g_app.render_framerate, g_app.emu_framerate);
+            snprintf(
+                title,
+                sizeof(title),
+                "fgb - FPS: %.2f, Emu FPS: %.2f, Emu Upd: %.02fus",
+                g_app.render_framerate,
+                g_app.emu_framerate,
+                g_app.emu_update_time * 1e6
+            );
             glfwSetWindowTitle(window, title);
             last_title_update = current_time;
         }
