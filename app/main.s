@@ -1,4 +1,4 @@
-.include "map.inc"
+.include "rom.inc"
 
 .define DIR $C000 ; Address to store sprite direction
 
@@ -11,13 +11,13 @@ main:
     ld (hl), $01
 
     ; Copy tile data to VRAM
-    ld d, 16
+    ld de, 16 ; 16 bytes of tile data
     ld hl, TILE_DATA
     ld bc, $8000 ; Tile block 0 address
     call memcpy
 
     ; Copy sprite data to OAM
-    ld d, 4
+    ld de, 4
     ld hl, SPRITE
     ld bc, $FE00 ; OAM address
     call memcpy
@@ -42,13 +42,15 @@ loop:
 
 memcpy:
     ; Arguments:
-    ; d: number of bytes to copy
+    ; de: number of bytes to copy
     ; hl: source address
     ; bc: destination address
     ld a, (hl+)
     ld (bc), a
     inc bc
-    dec d
+    dec de
+    ld a, d 
+    or e ; check if de == 0 since `dec de` does not set flags
     jr nz, memcpy
     ret
 
@@ -96,7 +98,7 @@ TILE_DATA:
     .db $FF, $00
 
 SPRITE:
-    .db $64, $64, $00, $00 ; y, x, tile, attributes
+    .db 100, 67, $00, $00 ; y, x, tile, attributes
 
 .org $40 ; VBlank interrupt vector
     jp vblank
