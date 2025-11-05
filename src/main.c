@@ -24,6 +24,7 @@ size_t file_size(FILE* f) {
 }
 
 #define DISASM_LINES 20
+#define WINDOW_SCALE 2
 
 struct app {
     fgb_emu* emu;
@@ -150,8 +151,8 @@ static GLFWwindow* window_init(void) {
     g_app.main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor());
 
     GLFWwindow* window = glfwCreateWindow(
-        (int)(SCREEN_WIDTH * 5 * g_app.main_scale),
-        (int)(SCREEN_HEIGHT * 5 * g_app.main_scale),
+        (int)(SCREEN_WIDTH * WINDOW_SCALE * g_app.main_scale),
+        (int)(SCREEN_HEIGHT * WINDOW_SCALE * g_app.main_scale),
         "fgb", NULL, NULL
     );
 

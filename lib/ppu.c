@@ -84,6 +84,11 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
 
     fgb_queue_clear(&ppu->bg_wnd_fifo);
 	fgb_queue_clear(&ppu->sprite_fifo);
+
+    ppu->reached_window_x = false;
+    ppu->reached_window_y = false;
+    ppu->window_line_counter = 0;
+
 	ppu->bg_wnd_fetch_step = FETCH_STEP_TILE_0;
 	ppu->fetch_tile_id = 0;
 	ppu->fetch_x = 0;
@@ -145,8 +150,30 @@ uint8_t fgb_tile_get_pixel(const fgb_tile* tile, uint8_t x, uint8_t y) {
     return ((msb >> (7 - x)) & 1) << 1 | ((lsb >> (7 - x)) & 1);
 }
 
-int fgb_ppu_get_tile_id(const fgb_ppu* ppu, int tile_map, int x, int y) {
+int fgb_ppu_get_tile_id_old(const fgb_ppu* ppu, int tile_map, int x, int y) {
     return ppu->vram[TILE_OFFSET(tile_map, x, y)];
+}
+
+int fgb_ppu_get_tile_id(const fgb_ppu* ppu) {
+    int offset;
+    if (ppu->reached_window_x) {
+        offset = ppu->fetch_x + (TILE_MAP_WIDTH * (ppu->window_line_counter / 8));
+        offset += TILE_MAP_OFFSET(ppu->lcd_control.wnd_tile_map);
+    } else {
+        offset = ppu->fetch_x + ((ppu->scroll.x / 8) & 0x1F);
+        offset += TILE_MAP_WIDTH * (((ppu->ly + ppu->scroll.y) & 0xFF) / 8);
+        offset += TILE_MAP_OFFSET(ppu->lcd_control.bg_tile_map);
+    }
+
+    return ppu->vram[offset];
+}
+
+int fgb_ppu_get_current_tile_y(const fgb_ppu* ppu) {
+    if (ppu->reached_window_x) {
+        return 2 * (ppu->window_line_counter % 8);
+    } else {
+        return 2 * ((ppu->ly + ppu->scroll.y) % 8);
+    }
 }
 
 const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_sprite) {
@@ -229,6 +256,12 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
             ppu->sprite_fetch_active = false;
 			fgb_queue_clear(&ppu->bg_wnd_fifo);
 
+            // Increment window line counter every time a scanline
+            // has any window pixels drawn
+            if (ppu->reached_window_x) {
+                ppu->window_line_counter++;
+            }
+
 			// Transition to HBlank
             ppu->hblank_cycles = HBLANK_MAX_CYCLES - ppu->mode_cycles;
 			ppu->mode_cycles = 0;
@@ -246,6 +279,11 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
 
 			ppu->stat.lyc_eq_ly = ppu->lyc == ppu->ly;
 
+            ppu->reached_window_x = false;
+            if (ppu->ly == ppu->window_pos.y) {
+                ppu->reached_window_y = true;
+            }
+
             // Clear sprites for next scanline
             memset(ppu->line_sprites, 0xFF, sizeof(ppu->line_sprites));
 
@@ -253,6 +291,10 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
                 ppu->stat.mode = PPU_MODE_VBLANK;
                 fgb_cpu_request_interrupt(ppu->cpu, IRQ_VBLANK);
                 fgb_ppu_swap_buffers(ppu);
+
+                ppu->reached_window_x = false;
+                ppu->reached_window_y = false;
+                ppu->window_line_counter = 0;
             } else {
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
             }
@@ -499,7 +541,7 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
         }
 
         // Get the background tile data
-        const int tile_id = fgb_ppu_get_tile_id(ppu, ppu->lcd_control.bg_tile_map, tile_x, tile_y);
+        const int tile_id = fgb_ppu_get_tile_id_old(ppu, ppu->lcd_control.bg_tile_map, tile_x, tile_y);
         const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, tile_id, false);
         if (!tile) {
             log_error("PPU: Failed to get tile data for (%d, %d)", tile_x, tile_y);
@@ -520,7 +562,7 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
             const int window_tile_x = (rel_window_x / TILE_WIDTH) % TILE_MAP_WIDTH;
             const int window_tile_y = (rel_window_y / TILE_HEIGHT) % TILE_MAP_HEIGHT;
 
-            const int window_tile_id = fgb_ppu_get_tile_id(ppu, ppu->lcd_control.wnd_tile_map, window_tile_x, window_tile_y);
+            const int window_tile_id = fgb_ppu_get_tile_id_old(ppu, ppu->lcd_control.wnd_tile_map, window_tile_x, window_tile_y);
             const fgb_tile* window_tile = fgb_ppu_get_tile_data(ppu, window_tile_id, false);
             if (window_tile) {
                 bg_pixel = fgb_tile_get_pixel(window_tile, window_x, window_y);
@@ -703,23 +745,20 @@ void fgb_ppu_pixel_fetcher_tick(fgb_ppu* ppu) {
     if (!ppu->sprite_fetch_active) {
         switch (ppu->bg_wnd_fetch_step++) {
         case FETCH_STEP_TILE_0: {
-            int offset = ppu->fetch_x + ((ppu->scroll.x / 8) & 0x1F);
-            offset += TILE_MAP_WIDTH * (((ppu->ly + ppu->scroll.y) & 0xFF) / 8);
-            offset += TILE_MAP_OFFSET(ppu->lcd_control.bg_tile_map);
-            ppu->fetch_tile_id = ppu->vram[offset];
+            ppu->fetch_tile_id = fgb_ppu_get_tile_id(ppu);
         } break;
         case FETCH_STEP_TILE_1:
             break;
         case FETCH_STEP_DATA_LOW_0: {
             const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->fetch_tile_id, false);
-            const int tile_y = 2 * ((ppu->ly + ppu->scroll.y) % 8);
+            const int tile_y = fgb_ppu_get_current_tile_y(ppu);
             ppu->bg_wnd_tile_lo = tile->data[tile_y];
         } break;
         case FETCH_STEP_DATA_LOW_1:
             break;
         case FETCH_STEP_DATA_HIGH_0: {
             const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->fetch_tile_id, false);
-            const int tile_y = 2 * ((ppu->ly + ppu->scroll.y) % 8);
+            const int tile_y = fgb_ppu_get_current_tile_y(ppu);
             ppu->bg_wnd_tile_hi = tile->data[tile_y + 1];
 
             if (ppu->is_first_fetch) {
@@ -783,6 +822,19 @@ void fgb_ppu_lcd_push(fgb_ppu* ppu) {
 
 	framebuffer[ppu->ly * SCREEN_WIDTH + ppu->framebuffer_x] = color;
 	ppu->framebuffer_x++;
+
+    if (ppu->reached_window_x) {
+        return;
+    }
+
+    const int window_pos = (int)ppu->window_pos.x - 7;
+    if (ppu->lcd_control.wnd_enable && ppu->reached_window_y && ppu->framebuffer_x >= window_pos) {
+        ppu->reached_window_x = true;
+        ppu->window_line_counter = 0;
+        ppu->bg_wnd_fetch_step = FETCH_STEP_TILE_0;
+        ppu->fetch_x = 0;
+        fgb_queue_clear(&ppu->bg_wnd_fifo);
+    }
 }
 
 void fgb_ppu_try_stat_irq(const fgb_ppu* ppu) {

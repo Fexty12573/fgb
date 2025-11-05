@@ -106,6 +106,10 @@ typedef struct fgb_ppu {
     enum fgb_fetch_step sprite_fetch_step;
 	int fetch_x;
 
+    bool reached_window_x;
+    bool reached_window_y;
+    int window_line_counter;
+
     // Fetcher internal storage
     int fetch_tile_id;
 	uint8_t bg_wnd_tile_lo;
@@ -225,7 +229,7 @@ void fgb_ppu_lock_buffer(fgb_ppu* ppu);
 void fgb_ppu_unlock_buffer(fgb_ppu* ppu);
 void fgb_ppu_swap_buffers(fgb_ppu* ppu);
 
-int fgb_ppu_get_tile_id(const fgb_ppu* ppu, int tile_map, int x, int y);
+int fgb_ppu_get_tile_id_old(const fgb_ppu* ppu, int tile_map, int x, int y);
 const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_sprite);
 uint8_t fgb_tile_get_pixel(const fgb_tile* tile, uint8_t x, uint8_t y);
 uint32_t fgb_ppu_get_bg_color(const fgb_ppu* ppu, uint8_t pixel_index);
