@@ -470,33 +470,28 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
     return 0xAA;
 }
 
-// TODO: Add checks for if the memory is even accessible
 void fgb_ppu_write_vram(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
-    //if (ppu->stat.mode == PPU_MODE_DRAW) {
-    //    log_trace("PPU: Attempt to write to VRAM during MODE_DRAW");
-    //    return;
-    //}
+    if (ppu->stat.mode == PPU_MODE_DRAW) {
+       return;
+    }
 
     ppu->vram[addr] = value;
 }
 
 uint8_t fgb_ppu_read_vram(const fgb_ppu* ppu, uint16_t addr) {
-    //if (ppu->stat.mode == PPU_MODE_DRAW) {
-    //    log_warn("PPU: Attempt to read from VRAM during MODE_DRAW");
-    //    return 0xFF;
-    //}
+    if (ppu->stat.mode == PPU_MODE_DRAW) {
+       return 0xFF;
+    }
 
     return ppu->vram[addr];
 }
 
 void fgb_ppu_write_oam(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
-    //if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
-    //    log_warn("PPU: Attempt to write to OAM during OAM scan");
-    //    return;
-    //}
+    if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
+       return;
+    }
 
     if (ppu->oam_blocked) {
-        log_warn("PPU: Attempt to write to OAM while OAM is blocked by DMA");
         return;
     }
 
@@ -504,10 +499,9 @@ void fgb_ppu_write_oam(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
 }
 
 uint8_t fgb_ppu_read_oam(const fgb_ppu* ppu, uint16_t addr) {
-    //if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
-    //    log_warn("PPU: Attempt to read from OAM during OAM scan");
-    //    return 0xFF;
-    //}
+    if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
+       return 0xFF;
+    }
 
     if (ppu->oam_blocked) {
         return 0xFF;
