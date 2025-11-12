@@ -135,7 +135,7 @@ uint8_t fgb_timer_read(const fgb_timer* timer, uint16_t addr) {
 
     default:
         log_warn("Unknown address for timer read: 0x%04X", addr);
-        return 0xAA; // Return a default value for unknown addresses
+        return 0xFF; // Return a default value for unknown addresses
     }
 }
 

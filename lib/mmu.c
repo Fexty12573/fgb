@@ -181,7 +181,7 @@ static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
     }
 
     log_error("Unmapped memory read from 0x%04X", addr);
-    return 0xAA; // Return a default value for unmapped reads
+    return 0xFF; // Return a default value for unmapped reads
 }
 
 static uint16_t fgb_mmu_read_u16(const fgb_mmu* mmu, uint16_t addr) {

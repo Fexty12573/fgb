@@ -54,7 +54,7 @@ uint8_t fgb_io_read(const fgb_io* io, uint16_t addr) {
     }
 
     log_trace("Unknown address for IO read: 0x%04X", addr);
-    return 0xAA;
+    return 0xFF;
 }
 
 void fgb_io_press_button(fgb_io* io, enum fgb_button button) {

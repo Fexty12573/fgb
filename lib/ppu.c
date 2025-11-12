@@ -467,7 +467,7 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
         break;
     }
 
-    return 0xAA;
+    return 0xFF;
 }
 
 void fgb_ppu_write_vram(fgb_ppu* ppu, uint16_t addr, uint8_t value) {

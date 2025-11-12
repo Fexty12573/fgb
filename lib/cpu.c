@@ -326,7 +326,7 @@ uint8_t fgb_cpu_read(const fgb_cpu* cpu, uint16_t addr) {
 
     default:
         log_warn("Unknown address for CPU read: 0x%04X", addr);
-        return 0xAA;
+        return 0xFF;
     }
 }
 
