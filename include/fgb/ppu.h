@@ -134,6 +134,7 @@ typedef struct fgb_ppu {
     int sprite_count;
     bool oam_scan_done;
 
+    bool last_stat;
     bool reset;
 
     fgb_palette bg_palette;
@@ -161,7 +162,7 @@ typedef struct fgb_ppu {
         uint8_t value;
         struct {
             uint8_t mode : 2;
-            uint8_t lyc_eq_ly : 1;
+            uint8_t : 1; // lyc_eq_ly flag (computed on read)
             uint8_t hblank_int : 1;
             uint8_t vblank_int : 1;
             uint8_t oam_int : 1;

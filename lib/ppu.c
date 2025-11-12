@@ -28,7 +28,7 @@ static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count);
 static void fgb_ppu_do_oam_scan(fgb_ppu* ppu);
 static void fgb_ppu_pixel_fetcher_tick(fgb_ppu* ppu);
 static void fgb_ppu_lcd_push(fgb_ppu* ppu);
-static void fgb_ppu_try_stat_irq(const fgb_ppu* ppu);
+static void fgb_ppu_try_stat_irq(fgb_ppu* ppu);
 
 static void fgb_queue_push(fgb_queue* queue, fgb_pixel pixel);
 static fgb_pixel fgb_queue_pop(fgb_queue* queue);
@@ -102,10 +102,10 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
     ppu->oam_scan_done = false;
     ppu->reset = false;
     ppu->frames_rendered = 0;
-    ppu->lcd_control.value = 0x00;
+    ppu->lcd_control.value = 0x91;
     ppu->ly = 0;
     ppu->lyc = 0;
-    ppu->stat.value = 0x00;
+    ppu->stat.value = 0x81;
     ppu->scroll.x = 0;
     ppu->scroll.y = 0;
     ppu->window_pos.x = 0;
@@ -204,17 +204,19 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
 
     if (!ppu->lcd_control.lcd_ppu_enable) {
         // LCD and PPU are disabled
-        ppu->stat.mode = PPU_MODE_HBLANK;
-        ppu->ly = 0;
-        ppu->mode_cycles = 0;
-        ppu->frame_cycles = 0;
-        ppu->reset = true;
+        if (!ppu->reset) {
+            ppu->stat.mode = PPU_MODE_HBLANK;
+            ppu->ly = 0;
+            ppu->mode_cycles = 0;
+            ppu->frame_cycles = 0;
+            ppu->reset = true;
 
-        fgb_ppu_lock_buffer(ppu);
-        memset(ppu->framebuffers, 0xFF, sizeof(ppu->framebuffers));
-        fgb_ppu_unlock_buffer(ppu);
+            fgb_ppu_lock_buffer(ppu);
+            memset(ppu->framebuffers, 0xFF, sizeof(ppu->framebuffers));
+            fgb_ppu_unlock_buffer(ppu);
 
-        fgb_ppu_swap_buffers(ppu);
+            fgb_ppu_swap_buffers(ppu);
+        }
 
         return false;
     } else if (ppu->lcd_control.lcd_ppu_enable && ppu->reset) {
@@ -297,7 +299,6 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
 			ppu->mode_cycles = 0;
 
             ppu->stat.mode = PPU_MODE_HBLANK;
-            fgb_ppu_try_stat_irq(ppu);
         }
         break;
 
@@ -306,8 +307,6 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
 			ppu->mode_cycles = 0;
 
             ppu->ly++;
-
-			ppu->stat.lyc_eq_ly = ppu->lyc == ppu->ly;
 
             ppu->reached_window_x = false;
             if (ppu->ly == ppu->window_pos.y) {
@@ -328,8 +327,6 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
             } else {
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
             }
-
-            fgb_ppu_try_stat_irq(ppu);
         }
         break;
 
@@ -338,16 +335,11 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
             ppu->mode_cycles -= VBLANK_CYCLES;
             ppu->ly++;
 
-            ppu->stat.lyc_eq_ly = ppu->lyc == ppu->ly;
-			fgb_ppu_try_stat_irq(ppu);
-
             if (ppu->ly >= 154) {
                 ppu->ly = 0;
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
                 ppu->frame_cycles = 0; // Reset frame cycles
                 ppu->frames_rendered++;
-
-                fgb_ppu_try_stat_irq(ppu);
 
                 return true;
             }
@@ -358,6 +350,8 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
         ppu->stat.mode = PPU_MODE_OAM_SCAN;
         break;
     }
+
+    fgb_ppu_try_stat_irq(ppu);
 
     return false;
 }
@@ -430,7 +424,9 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
         return ppu->lcd_control.value;
 
     case 0xFF41:
-		return ppu->stat.value | 0x80; // Unused bit 7 is always 1
+		return ppu->stat.value
+            | 0x80 // Unused bit 7 is always 1
+            | ((ppu->lyc == ppu->ly) << 2); // Bit 2: LYC == LY
 
     case 0xFF42:
         return ppu->scroll.y;
@@ -739,13 +735,17 @@ void fgb_ppu_lcd_push(fgb_ppu* ppu) {
     }
 }
 
-void fgb_ppu_try_stat_irq(const fgb_ppu* ppu) {
-    if ((ppu->stat.lyc_eq_ly && ppu->stat.lyc_int) ||
+void fgb_ppu_try_stat_irq(fgb_ppu* ppu) {
+    const bool stat = (ppu->ly == ppu->lyc && ppu->stat.lyc_int) ||
         (ppu->stat.mode == PPU_MODE_HBLANK && ppu->stat.hblank_int) ||
         (ppu->stat.mode == PPU_MODE_OAM_SCAN && ppu->stat.oam_int) ||
-        (ppu->stat.mode == PPU_MODE_VBLANK && (ppu->stat.vblank_int || ppu->stat.oam_int))) {
+        (ppu->stat.mode == PPU_MODE_VBLANK && (ppu->stat.vblank_int || ppu->stat.oam_int));
+
+    if (!ppu->last_stat && stat) {
         fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
     }
+
+    ppu->last_stat = stat;
 }
 
 void fgb_queue_push(fgb_queue* queue, fgb_pixel pixel) {
