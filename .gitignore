@@ -3,3 +3,4 @@ build/
 .vscode/
 *.log
 imgui.ini
+data/test-roms/

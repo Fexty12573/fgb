@@ -100,6 +100,7 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
 	ppu->framebuffer_x = 0;
 
     ppu->oam_scan_done = false;
+    ppu->reset = false;
     ppu->frames_rendered = 0;
     ppu->lcd_control.value = 0x00;
     ppu->ly = 0;
@@ -199,6 +200,35 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
     if (!ppu->cpu) {
         log_error("PPU: CPU not set");
         return false;
+    }
+
+    if (!ppu->lcd_control.lcd_ppu_enable) {
+        // LCD and PPU are disabled
+        ppu->stat.mode = PPU_MODE_HBLANK;
+        ppu->ly = 0;
+        ppu->mode_cycles = 0;
+        ppu->frame_cycles = 0;
+        ppu->reset = true;
+
+        fgb_ppu_lock_buffer(ppu);
+        memset(ppu->framebuffers, 0xFF, sizeof(ppu->framebuffers));
+        fgb_ppu_unlock_buffer(ppu);
+
+        fgb_ppu_swap_buffers(ppu);
+
+        return false;
+    } else if (ppu->lcd_control.lcd_ppu_enable && ppu->reset) {
+        // LCD/PPU just got enabled, reset state
+        ppu->stat.mode = PPU_MODE_OAM_SCAN;
+        ppu->mode_cycles = 4; // After turning on LCD, OAM Scan is 4 cycles shorter
+        ppu->frame_cycles = 0;
+        ppu->framebuffer_x = 0;
+        ppu->processed_pixels = 0;
+        ppu->fetch_x = 0;
+        ppu->is_first_fetch = true;
+        fgb_queue_clear(&ppu->bg_wnd_fifo);
+        fgb_queue_clear(&ppu->sprite_fifo);
+        ppu->reset = false;
     }
 
     ppu->mode_cycles++;

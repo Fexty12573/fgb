@@ -134,6 +134,8 @@ typedef struct fgb_ppu {
     int sprite_count;
     bool oam_scan_done;
 
+    bool reset;
+
     fgb_palette bg_palette;
     fgb_palette obj_palette;
 
