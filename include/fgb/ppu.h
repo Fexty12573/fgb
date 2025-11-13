@@ -146,14 +146,14 @@ typedef struct fgb_ppu {
     union {
         uint8_t value;
         struct {
-            uint8_t bg_wnd_enable : 1;
-            uint8_t obj_enable : 1;
-            uint8_t obj_size : 1;
-            uint8_t bg_tile_map : 1;
-            uint8_t bg_wnd_tiles : 1;
-            uint8_t wnd_enable : 1;
-            uint8_t wnd_tile_map : 1;
-            uint8_t lcd_ppu_enable : 1;
+            /* 0 */ uint8_t bg_wnd_enable : 1;
+            /* 1 */ uint8_t obj_enable : 1;
+            /* 2 */ uint8_t obj_size : 1;
+            /* 3 */ uint8_t bg_tile_map : 1;
+            /* 4 */ uint8_t bg_wnd_tiles : 1;
+            /* 5 */ uint8_t wnd_enable : 1;
+            /* 6 */ uint8_t wnd_tile_map : 1;
+            /* 7 */ uint8_t lcd_ppu_enable : 1;
         };
     } lcd_control;
 
@@ -162,12 +162,12 @@ typedef struct fgb_ppu {
     union {
         uint8_t value;
         struct {
-            uint8_t mode : 2;
-            uint8_t : 1; // lyc_eq_ly flag (computed on read)
-            uint8_t hblank_int : 1;
-            uint8_t vblank_int : 1;
-            uint8_t oam_int : 1;
-            uint8_t lyc_int : 1;
+            /* 0 */ uint8_t mode : 2;
+            /* 2 */ uint8_t : 1; // lyc_eq_ly flag (computed on read)
+            /* 3 */ uint8_t hblank_int : 1;
+            /* 4 */ uint8_t vblank_int : 1;
+            /* 5 */ uint8_t oam_int : 1;
+            /* 6 */ uint8_t lyc_int : 1;
         };
         struct {
             // mode and lyc_eq_ly are read-only

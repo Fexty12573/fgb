@@ -189,6 +189,10 @@ const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_s
 }
 
 uint32_t fgb_ppu_get_bg_color(const fgb_ppu* ppu, uint8_t pixel_index) {
+    if (!ppu->lcd_control.bg_wnd_enable) {
+        return ppu->bg_palette.colors[0]; // Background disabled, always color 0
+	}
+
     return ppu->bg_palette.colors[(ppu->bgp.value >> (pixel_index * 2)) & 0x3];
 }
 
