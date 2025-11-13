@@ -127,6 +127,7 @@ typedef struct fgb_ppu {
     uint32_t mode_cycles; // Cycles for the current mode
     uint32_t frame_cycles; // Cycles for the current frame
 	uint32_t hblank_cycles; // Cycles spent in HBlank
+    uint32_t scanline_cycles; // Cycles spent in the current scanline
 
     int pixels_drawn; // Number of pixels drawn in the current scanline
 

@@ -629,6 +629,53 @@ static void render_debug_options(void) {
     igEnd();
 }
 
+static void render_ppu_options(void) {
+	igBegin("PPU", NULL, ImGuiWindowFlags_None);
+
+	fgb_ppu* ppu = g_app.emu->ppu;
+
+    if (igBeginTable("ppu_table", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV, (ImVec2) { 0, 0 }, 0.0f)) {
+        igTableNextRow(0, 0);
+        igTableSetColumnIndex(0);
+        igText("Mode: %d", ppu->stat.mode);
+
+        igTableSetColumnIndex(1);
+        igTextUnformatted("-----", NULL);
+
+        igTableNextRow(0, 0);
+        igTableSetColumnIndex(0);
+        igText("Scanline: %d", ppu->ly);
+
+        igTableSetColumnIndex(1);
+        igTextUnformatted("-----", NULL);
+
+        igTableNextRow(0, 0);
+        igTableSetColumnIndex(0);
+        igText("Cycle: %d", ppu->mode_cycles);
+
+        igTableSetColumnIndex(1);
+        igTextUnformatted("-----", NULL);
+
+        igTableNextRow(0, 0);
+		igTableSetColumnIndex(0);
+
+        struct { uint8_t x, y; } window_pos = {
+            .x = ppu->window_pos.x,
+            .y = ppu->window_pos.y,
+		};
+
+        igSetNextItemWidth(200.0f);
+        if (igInputScalarN("Window Pos", ImGuiDataType_U8, &window_pos.x, 2, NULL, NULL, "%d", ImGuiInputTextFlags_None)) {
+            ppu->window_pos.x = window_pos.x;
+            ppu->window_pos.y = window_pos.y;
+        }
+
+        igEndTable();
+	}
+
+    igEnd();
+}
+
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
@@ -986,6 +1033,7 @@ int main(int argc, char** argv) {
         render_tilesets(tiles_per_row, block_textures);
         render_line_sprites();
         render_debug_options();
+		render_ppu_options();
 
         igRender();
 

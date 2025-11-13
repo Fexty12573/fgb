@@ -79,6 +79,7 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
     ppu->back_buffer = 0;
     ppu->mode_cycles = 0;
     ppu->frame_cycles = 0;
+    ppu->scanline_cycles = 0;
     ppu->pixels_drawn = 0;
     ppu->sprite_count = 0;
 
@@ -236,6 +237,7 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
     ppu->mode_cycles++;
     ppu->frame_cycles++;
     ppu->dma_cycles++;
+    ppu->scanline_cycles++;
 
     if (ppu->dma_active && ppu->dma_cycles > 4) {
         ppu->oam_blocked = true;
@@ -271,6 +273,10 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
             ppu->stat.mode = PPU_MODE_DRAW;
             ppu->pixels_drawn = 0; // Reset pixel count for the new scanline
             ppu->sprite_index = 0; // Reset sprite index for fetching
+
+            if (ppu->ly == ppu->window_pos.y) {
+                ppu->reached_window_y = true;
+            }
         }
         break;
 
@@ -304,14 +310,16 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
 
     case PPU_MODE_HBLANK:
         if (ppu->mode_cycles >= ppu->hblank_cycles) {
+            if (ppu->scanline_cycles != SCANLINE_CYCLES) {
+                log_warn("Scanline took %d cycles instead of 456", ppu->scanline_cycles);
+            }
+
 			ppu->mode_cycles = 0;
+            ppu->scanline_cycles = 0;
 
             ppu->ly++;
 
             ppu->reached_window_x = false;
-            if (ppu->ly == ppu->window_pos.y) {
-                ppu->reached_window_y = true;
-            }
 
             // Clear sprites for next scanline
             memset(ppu->line_sprites, 0xFF, sizeof(ppu->line_sprites));
@@ -333,6 +341,7 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
     case PPU_MODE_VBLANK:
         if (ppu->mode_cycles >= VBLANK_CYCLES) {
             ppu->mode_cycles -= VBLANK_CYCLES;
+            ppu->scanline_cycles = 0;
             ppu->ly++;
 
             if (ppu->ly >= 154) {
