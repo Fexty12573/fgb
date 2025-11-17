@@ -80,6 +80,7 @@ typedef struct fgb_pixel {
 	uint8_t palette : 1;
     uint8_t sprite_prio : 1; // Only relevant for CGB sprites
     uint8_t bg_prio : 1; // See fgb_sprite::priority
+	uint8_t is_wnd : 1; // Debug: is this pixel from the window?
 } fgb_pixel;
 
 typedef struct fgb_queue {
@@ -118,6 +119,7 @@ typedef struct fgb_ppu {
     uint8_t sprite_tile_hi;
     bool is_first_fetch;
     bool sprite_fetch_active;
+    bool is_window_tile;
     int sprite_index; // Index of the next sprite to evaluate during pixel fetching
     const fgb_sprite* current_sprite; // Current sprite being fetched
 
@@ -210,6 +212,7 @@ typedef struct fgb_ppu {
         bool hide_bg;
         bool hide_sprites;
         bool hide_window;
+        uint32_t window_color;
     } debug;
 
     bool dma_active; // DMA transfer is active
@@ -229,6 +232,7 @@ void fgb_ppu_set_cpu(fgb_ppu* ppu, struct fgb_cpu* cpu);
 void fgb_ppu_reset(fgb_ppu* ppu);
 
 const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu);
+const uint32_t* fgb_ppu_get_back_buffer(const fgb_ppu* ppu);
 void fgb_ppu_lock_buffer(fgb_ppu* ppu);
 void fgb_ppu_unlock_buffer(fgb_ppu* ppu);
 void fgb_ppu_swap_buffers(fgb_ppu* ppu);
@@ -236,7 +240,7 @@ void fgb_ppu_swap_buffers(fgb_ppu* ppu);
 int fgb_ppu_get_tile_id_old(const fgb_ppu* ppu, int tile_map, int x, int y);
 const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_sprite);
 uint8_t fgb_tile_get_pixel(const fgb_tile* tile, uint8_t x, uint8_t y);
-uint32_t fgb_ppu_get_bg_color(const fgb_ppu* ppu, uint8_t pixel_index);
+uint32_t fgb_ppu_get_bg_color(const fgb_ppu* ppu, fgb_pixel pixel);
 uint32_t fgb_ppu_get_obj_color(const fgb_ppu* ppu, uint8_t pixel_index, int palette);
 
 bool fgb_ppu_tick(fgb_ppu* ppu);

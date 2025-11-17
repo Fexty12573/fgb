@@ -47,6 +47,8 @@ struct app {
     char disasm_buffer[DISASM_LINES][64];
     char* disasm_buffer_ptrs[DISASM_LINES];
     uint16_t disasm_addrs[DISASM_LINES];
+
+    uint32_t framebuffer_textures[PPU_FRAMEBUFFER_COUNT];
 };
 
 struct app g_app = {
@@ -640,7 +642,11 @@ static void render_ppu_options(void) {
         igText("Mode: %d", ppu->stat.mode);
 
         igTableSetColumnIndex(1);
-        igTextUnformatted("-----", NULL);
+        ImVec4 color;
+        igColorConvertU32ToFloat4(&color, ppu->debug.window_color);
+        if (igColorEdit4("Window Color", &color.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar)) {
+			ppu->debug.window_color = igColorConvertFloat4ToU32(color);
+        }
 
         igTableNextRow(0, 0);
         igTableSetColumnIndex(0);
@@ -671,6 +677,58 @@ static void render_ppu_options(void) {
         }
 
         igEndTable();
+
+        if (igCollapsingHeader_BoolPtr("Front Buffer", NULL, ImGuiTreeNodeFlags_None)) {
+	        igImage((ImTextureRef){NULL, g_app.framebuffer_textures[0]},
+	            (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
+	            (ImVec2){0, 0},
+	            (ImVec2){1, 1}
+			);
+        }
+
+        if (igCollapsingHeader_BoolPtr("Back Buffer", NULL, ImGuiTreeNodeFlags_None)) {
+	        igImage((ImTextureRef){NULL, g_app.framebuffer_textures[1]},
+	            (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
+	            (ImVec2){0, 0},
+	            (ImVec2){1, 1}
+			);
+        }
+
+        if (igCollapsingHeader_BoolPtr("Tile Map 0 ($9800)", NULL, ImGuiTreeNodeFlags_None)) {
+            for (int y = 0; y < 32; y++) {
+                for (int x = 0; x < 32; x++) {
+					const uint8_t tile_index = ppu->vram[0x1800 + y * 32 + x];
+                    float r, g, b;
+                    igColorConvertHSVtoRGB((float)tile_index / 255.0f, 1.0f, 1.0f, &r, &g, &b);
+                    igTextColored((ImVec4) { r, g, b, 1 }, "%02X", tile_index);
+                    if (igBeginItemTooltip()) {
+						igText("(%d, %d)", x, y);
+						igEndTooltip();
+                    }
+                    igSameLine(0, -1);
+                }
+
+                igNewLine();
+            }
+        }
+
+        if (igCollapsingHeader_BoolPtr("Tile Map 1 ($9C00)", NULL, ImGuiTreeNodeFlags_None)) {
+            for (int y = 0; y < 32; y++) {
+                for (int x = 0; x < 32; x++) {
+                    const uint8_t tile_index = ppu->vram[0x1C00 + y * 32 + x];
+                    float r, g, b;
+                    igColorConvertHSVtoRGB((float)tile_index / 255.0f, 1.0f, 1.0f, &r, &g, &b);
+                    igTextColored((ImVec4) { r, g, b, 1 }, "%02X", tile_index);
+                    if (igBeginItemTooltip()) {
+						igText("(%d, %d)", x, y);
+						igEndTooltip();
+                    }
+                    igSameLine(0, -1);
+                }
+
+                igNewLine();
+            }
+        }
 	}
 
     igEnd();
@@ -958,6 +1016,9 @@ int main(int argc, char** argv) {
     g_app.emu->ppu->bg_palette = bg_pal;
     g_app.emu->ppu->obj_palette = obj_pal;
 
+	g_app.framebuffer_textures[0] = screen_texture; // Front buffer
+    g_app.framebuffer_textures[1] = fgb_create_screen_texture(); // Back buffer
+
     glfwSetKeyCallback(window, key_callback);
     glfwSetDropCallback(window, drop_callback);
 
@@ -992,6 +1053,7 @@ int main(int argc, char** argv) {
         glfwPollEvents();
 
         fgb_upload_screen_texture(screen_texture, g_app.emu->ppu);
+        fgb_upload_back_buffer_texture(g_app.framebuffer_textures[1], g_app.emu->ppu);
         fgb_upload_tile_block_texture(block_textures[0], tiles_per_row, g_app.emu->ppu, 0, &bg_pal);
         fgb_upload_tile_block_texture(block_textures[1], tiles_per_row, g_app.emu->ppu, 1, &bg_pal);
         fgb_upload_tile_block_texture(block_textures[2], tiles_per_row, g_app.emu->ppu, 2, &obj_pal);

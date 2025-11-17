@@ -60,11 +60,19 @@ uint32_t fgb_create_screen_texture(void) {
 void fgb_upload_screen_texture(uint32_t texture_id, fgb_ppu* ppu) {
     gl_call(glBindTexture(GL_TEXTURE_2D, texture_id));
 
-    // ppu->screen is already in RGBA format, so we can upload it directly
     fgb_ppu_lock_buffer(ppu);
     const uint32_t* framebuffer = fgb_ppu_get_front_buffer(ppu);
     gl_call(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, framebuffer));
     fgb_ppu_unlock_buffer(ppu);
+}
+
+void fgb_upload_back_buffer_texture(uint32_t texture_id, fgb_ppu* ppu) {
+    gl_call(glBindTexture(GL_TEXTURE_2D, texture_id));
+
+    fgb_ppu_lock_buffer(ppu);
+    const uint32_t* framebuffer = fgb_ppu_get_back_buffer(ppu);
+    gl_call(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, framebuffer));
+	fgb_ppu_unlock_buffer(ppu);
 }
 
 uint32_t fgb_create_tile_block_texture(int tiles_per_row) {
