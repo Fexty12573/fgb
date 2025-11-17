@@ -8,11 +8,16 @@
 
 static uint8_t fgb_compute_header_checksum(const uint8_t* data);
 static uint32_t fgb_get_ram_size_bytes(const fgb_cart_header* header);
+static bool fgb_cart_map_banks(fgb_cart* cart);
+
 static uint8_t fgb_cart_read_rom_only(const fgb_cart* cart, uint16_t addr);
-static uint8_t fgb_cart_read_mbc1_3(const fgb_cart* cart, uint16_t addr);
+static uint8_t fgb_cart_read_mbc3(const fgb_cart* cart, uint16_t addr);
 
 static void fgb_cart_write_rom_only(fgb_cart* cart, uint16_t addr, uint8_t value);
-static void fgb_cart_write_mbc1_3(fgb_cart* cart, uint16_t addr, uint8_t value);
+static void fgb_cart_write_mbc3(fgb_cart* cart, uint16_t addr, uint8_t value);
+
+static uint8_t fgb_cart_read_mbc1(const fgb_cart* cart, uint16_t addr);
+static void fgb_cart_write_mbc1(fgb_cart* cart, uint16_t addr, uint8_t value);
 
 static const uint8_t fgb_nintendo_logo[] = {
     0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
@@ -52,9 +57,13 @@ fgb_cart* fgb_cart_load(const uint8_t* data, size_t size) {
     }
 
     const size_t rom_banks = 2ull << cart->header.rom_size;
+    cart->ram_size_bytes = fgb_get_ram_size_bytes(&cart->header);
+    cart->rom_bank_mask = (uint8_t)(rom_banks - 1ull);
 
-    const size_t ram_size_bytes = fgb_get_ram_size_bytes(&cart->header);
-    const size_t ram_banks = ram_size_bytes / FGB_CART_RAM_BANK_SIZE;
+    if (!fgb_cart_map_banks(cart)) {
+        fgb_cart_destroy(cart);
+        return NULL;
+	}
 
     if (size < rom_banks * FGB_CART_ROM_BANK_SIZE) {
         log_error("ROM size (%zu bytes) is smaller than expected (%zu bytes), aborting cart load", size, rom_banks * FGB_CART_ROM_BANK_SIZE);
@@ -70,34 +79,18 @@ fgb_cart* fgb_cart_load(const uint8_t* data, size_t size) {
     case CART_TYPE_MBC1:
     case CART_TYPE_MBC1_RAM:
     case CART_TYPE_MBC1_RAM_BATTERY:
+		cart->read = fgb_cart_read_mbc1;
+		cart->write = fgb_cart_write_mbc1;
+		cart->rom_bank = 1; // MBC1 starts with bank 1 selected
+        break;
 	case CART_TYPE_MBC3_RAM_BATTERY:
     case CART_TYPE_MBC3_TIMER_BATTERY:
     case CART_TYPE_MBC3:
     case CART_TYPE_MBC3_RAM:
     case CART_TYPE_MBC3_TIMER_RAM_BATTERY:
-		cart->read = fgb_cart_read_mbc1_3;
-        cart->write = fgb_cart_write_mbc1_3;
+		cart->read = fgb_cart_read_mbc3;
+        cart->write = fgb_cart_write_mbc3;
 		cart->rom_bank = 1; // MBC3 starts with bank 1 selected
-		cart->rom_bank_mask = (uint8_t)(rom_banks - 1ull);
-
-        for (size_t i = 0; i < rom_banks; i++) {
-            cart->rom_banks[i] = &cart->rom[i * FGB_CART_ROM_BANK_SIZE];
-        }
-
-        if (ram_size_bytes > 0) {
-            cart->ram = malloc(ram_size_bytes);
-            if (!cart->ram) {
-                log_error("Failed to allocate RAM");
-                fgb_cart_destroy(cart);
-                return NULL;
-            }
-
-            memset(cart->ram, 0, ram_size_bytes);
-            
-            for (size_t i = 0; i < ram_banks; i++) {
-                cart->ram_banks[i] = &cart->ram[i * FGB_CART_RAM_BANK_SIZE];
-            }
-        }
         break;
 	case CART_TYPE_ROM_RAM:
 	case CART_TYPE_ROM_RAM_BATTERY:
@@ -163,11 +156,37 @@ uint32_t fgb_get_ram_size_bytes(const fgb_cart_header* header) {
     }
 }
 
+bool fgb_cart_map_banks(fgb_cart* cart) {
+    const size_t rom_banks = 2ull << cart->header.rom_size;
+    const size_t ram_banks = cart->ram_size_bytes / FGB_CART_RAM_BANK_SIZE;
+
+    for (size_t i = 0; i < rom_banks; i++) {
+        cart->rom_banks[i] = &cart->rom[i * FGB_CART_ROM_BANK_SIZE];
+    }
+
+    if (cart->ram_size_bytes > 0) {
+        cart->ram = malloc(cart->ram_size_bytes);
+        if (!cart->ram) {
+            log_error("Failed to allocate RAM");
+            fgb_cart_destroy(cart);
+            return false;
+        }
+
+        memset(cart->ram, 0, cart->ram_size_bytes);
+
+        for (size_t i = 0; i < ram_banks; i++) {
+            cart->ram_banks[i] = &cart->ram[i * FGB_CART_RAM_BANK_SIZE];
+        }
+    }
+
+    return true;
+}
+
 uint8_t fgb_cart_read_rom_only(const fgb_cart* cart, uint16_t addr) {
     return cart->rom[addr];
 }
 
-uint8_t fgb_cart_read_mbc1_3(const fgb_cart* cart, uint16_t addr) {
+uint8_t fgb_cart_read_mbc3(const fgb_cart* cart, uint16_t addr) {
     if (addr < 0x4000) {
         // Bank 0
         return cart->rom[addr];
@@ -199,7 +218,7 @@ void fgb_cart_write_rom_only(fgb_cart* cart, uint16_t addr, uint8_t value) {
     log_warn("Attempt to write to ROM_ONLY cart at 0x%04X", addr);
 }
 
-void fgb_cart_write_mbc1_3(fgb_cart* cart, uint16_t addr, uint8_t value) {
+void fgb_cart_write_mbc3(fgb_cart* cart, uint16_t addr, uint8_t value) {
     if (addr < 0x2000) {
         // Enable/Disable RAM
         cart->ram_enabled = (value & 0x0F) == 0x0A;
@@ -208,7 +227,9 @@ void fgb_cart_write_mbc1_3(fgb_cart* cart, uint16_t addr, uint8_t value) {
 
     if (addr < 0x4000) {
         // Switch ROM Bank
-        cart->rom_bank = value ? value & 0x7F : 1;
+        cart->rom_bank = value & cart->rom_bank_mask
+    		? value & cart->rom_bank_mask
+    		: 1;
         return;
     }
 
@@ -223,11 +244,78 @@ void fgb_cart_write_mbc1_3(fgb_cart* cart, uint16_t addr, uint8_t value) {
         return;
     }
 
-    if (addr >= 0xA000 && addr < 0xC000 && cart->ram_enabled) {
-        cart->ram_banks[cart->ram_bank][addr - 0xA000] = value;
+    if (addr >= 0xA000 && addr < 0xC000 && cart->ram_enabled && cart->ram_size_bytes > 0) {
+        cart->ram_banks[cart->ram_bank][(addr - 0xA000) % cart->ram_size_bytes] = value;
         return;
     }
 
     log_warn("Attempt to write to unmapped MBC3 memory at address 0x%04X", addr);
+}
+
+uint8_t fgb_cart_read_mbc1(const fgb_cart* cart, uint16_t addr) {
+    if (addr < 0x4000) {
+        if (cart->mode == CART_MODE_SIMPLE) {
+            // Bank 0
+            return cart->rom[addr];
+        }
+
+        // Switchable ROM bank (using upper bits)
+		return cart->rom_banks[cart->ram_bank][addr];
+    }
+
+    if (addr < 0x8000) {
+		return cart->rom_banks[(cart->ram_bank << 5) | cart->rom_bank][addr - 0x4000];
+    }
+
+    if (addr >= 0xA000 && addr < 0xC000 && cart->ram_enabled && cart->ram_size_bytes > 0) {
+        const uint32_t offset = (addr - 0xA000) % cart->ram_size_bytes;
+
+		if (cart->mode == CART_MODE_SIMPLE) {
+            return cart->ram_banks[0][offset];
+		}
+
+		return cart->ram_banks[cart->ram_bank][offset];
+    }
+
+	log_warn("Attempt to read from unmapped MBC1 memory at address 0x%04X", addr);
+	return 0xFF;
+}
+
+void fgb_cart_write_mbc1(fgb_cart* cart, uint16_t addr, uint8_t value) {
+    if (addr < 0x2000) {
+	    cart->ram_enabled = (value & 0x0F) == 0x0A;
+		return;
+    }
+
+    if (addr < 0x4000) {
+	    cart->rom_bank = value
+            ? value & cart->rom_bank_mask & 0x1F // Register is still 5 bits
+			: 1;
+        return;
+    }
+
+    if (addr < 0x6000) {
+		cart->ram_bank = value & 0x03;
+        return;
+    }
+
+    if (addr < 0x8000) {
+	    cart->mode = value & 0x1;
+		return;
+    }
+
+    if (addr >= 0xA000 && addr < 0xC000 && cart->ram_enabled && cart->ram_size_bytes > 0) {
+		const uint32_t offset = (addr - 0xA000) % cart->ram_size_bytes;
+
+        if (cart->mode == CART_MODE_SIMPLE) {
+			cart->ram_banks[0][offset] = value;
+        } else {
+			cart->ram_banks[cart->ram_bank][offset] = value;
+        }
+
+        return;
+	}
+
+	log_warn("Attempt to write to unmapped MBC1 memory at address 0x%04X", addr);
 }
 
