@@ -166,7 +166,7 @@ int fgb_ppu_get_tile_id(const fgb_ppu* ppu) {
         offset = ppu->fetch_x + (TILE_MAP_WIDTH * (ppu->window_line_counter / 8));
         offset += TILE_MAP_OFFSET(ppu->lcd_control.wnd_tile_map);
     } else {
-        offset = ppu->fetch_x + ((ppu->scroll.x / 8) & 0x1F);
+        offset = (ppu->fetch_x + (ppu->scroll.x / 8)) & 0x1F;
         offset += TILE_MAP_WIDTH * (((ppu->ly + ppu->scroll.y) & 0xFF) / 8);
         offset += TILE_MAP_OFFSET(ppu->lcd_control.bg_tile_map);
     }
@@ -682,14 +682,13 @@ void fgb_ppu_pixel_fetcher_tick(fgb_ppu* ppu) {
             const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->fetch_tile_id, false);
             const int tile_y = fgb_ppu_get_current_tile_y(ppu);
             ppu->bg_wnd_tile_hi = tile->data[tile_y + 1];
-
+        } break;
+        case FETCH_STEP_DATA_HIGH_1:
             if (ppu->is_first_fetch) {
                 // The first time on each scanline the first 3 steps are repeated
                 ppu->bg_wnd_fetch_step = FETCH_STEP_TILE_0;
                 ppu->is_first_fetch = false;
             }
-        } break;
-        case FETCH_STEP_DATA_HIGH_1:
             break;
         case FETCH_STEP_PUSH_0: {
             if (!fgb_queue_empty(&ppu->bg_wnd_fifo)) {
