@@ -141,7 +141,7 @@ void fgb_cpu_tick(fgb_cpu* cpu); // Tick 1 T-cycle
 void fgb_cpu_m_tick(fgb_cpu* cpu); // Tick 1 M-cycle (4 T-cycles)
 void fgb_cpu_reset(fgb_cpu* cpu);
 void fgb_cpu_run_frame(fgb_cpu* cpu); // Executes FGB_CYCLES_PER_FRAME cycles
-int fgb_cpu_step(fgb_cpu* cpu); // Executes a single instruction and returns its cycles
+uint32_t fgb_cpu_step(fgb_cpu* cpu); // Executes a single instruction and returns its cycles
 void fgb_cpu_request_interrupt(fgb_cpu* cpu, enum fgb_cpu_interrupt interrupt);
 bool fgb_cpu_has_pending_interrupts(const fgb_cpu* cpu);
 

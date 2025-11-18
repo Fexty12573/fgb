@@ -47,7 +47,11 @@ fgb_ppu* fgb_ppu_create(void) {
 
     memset(ppu, 0, sizeof(fgb_ppu));
 
-    mtx_init(&ppu->buffer_mutex, mtx_plain);
+    if (mtx_init(&ppu->buffer_mutex, mtx_plain) != thrd_success) {
+        log_error("PPU: Failed to initialize buffer mutex");
+        free(ppu);
+        return NULL;
+	}
 
     ppu->bg_palette.colors[0] = 0xFFFFFFFF; // Color 0: White
     ppu->bg_palette.colors[1] = 0xFFB0B0B0; // Color 1: Light Gray
@@ -209,7 +213,7 @@ const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_s
         return (fgb_tile*)&ppu->vram[TILE_DATA_OFFSET(0, tile_id)];
     }
 
-    int tile_block = tile_id > 127 ? 1 : 2; // Tile ID > 127 uses block 1, otherwise block 2
+    const int tile_block = tile_id > 127 ? 1 : 2; // Tile ID > 127 uses block 1, otherwise block 2
     return (fgb_tile*)&ppu->vram[TILE_DATA_OFFSET(tile_block, tile_id % 128)];
 }
 
@@ -335,7 +339,7 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
             }
 
 			// Transition to HBlank
-            ppu->hblank_cycles = HBLANK_MAX_CYCLES - ppu->mode_cycles;
+            ppu->hblank_cycles = max(HBLANK_MAX_CYCLES - (int)ppu->mode_cycles, 0);
 			ppu->mode_cycles = 0;
 
             ppu->stat.mode = PPU_MODE_HBLANK;
@@ -345,7 +349,7 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
     case PPU_MODE_HBLANK:
         if (ppu->mode_cycles >= ppu->hblank_cycles) {
             if (ppu->scanline_cycles != SCANLINE_CYCLES) {
-                log_warn("Scanline took %d cycles instead of 456", ppu->scanline_cycles);
+                log_warn("Scanline %u of frame %d took %u cycles instead of 456", ppu->ly, ppu->frames_rendered, ppu->scanline_cycles);
             }
 
 			ppu->mode_cycles = 0;
@@ -754,7 +758,7 @@ void fgb_ppu_lcd_push(fgb_ppu* ppu) {
         return;
 	}
 
-    if (++ppu->processed_pixels < (ppu->scroll.x % 8)) {
+    if (ppu->processed_pixels++ < (ppu->scroll.x % 8)) {
         // Skip pixels until we reach the scroll offset
         fgb_queue_pop(&ppu->bg_wnd_fifo);
         return;

@@ -204,7 +204,7 @@ void fgb_cpu_run_frame(fgb_cpu* cpu) {
     }
 }
 
-int fgb_cpu_step(fgb_cpu* cpu) {
+uint32_t fgb_cpu_step(fgb_cpu* cpu) {
     const uint32_t start_cycles = cpu->cycles_this_frame;
 
     switch (cpu->mode) {
@@ -516,7 +516,7 @@ uint16_t fgb_cpu_read_u16(fgb_cpu *cpu, uint16_t addr) {
     fgb_cpu_m_tick(cpu);
     const uint16_t high = fgb_mmu_read_u8(cpu, addr + 1);
 
-    return (high << 8) | low;
+    return (high << 8 | low) & 0xFFFF;
 }
 
 void fgb_cpu_write_u8(fgb_cpu *cpu, uint16_t addr, uint8_t value) {
@@ -686,7 +686,7 @@ inline void fgb_push(fgb_cpu *cpu, uint16_t value) {
 static inline void fgb_ret_(fgb_cpu* cpu) {
     const uint8_t low = fgb_cpu_read_u8(cpu, cpu->regs.sp++);
     const uint8_t high = fgb_cpu_read_u8(cpu, cpu->regs.sp++);
-    cpu->regs.pc = (high << 8) | low;
+	cpu->regs.pc = (high << 8 | low) & 0xFFFF;
     fgb_cpu_m_tick(cpu);
 
     if (cpu->call_depth > 0) {
@@ -961,7 +961,7 @@ void fgb_daa(fgb_cpu* cpu, const fgb_instruction* ins) {
         a += adj;
     }
 
-    cpu->regs.a = a;
+	cpu->regs.a = a & 0xFF;
     set_flag(z, cpu->regs.a == 0);
     set_flag(h, 0);
 }
