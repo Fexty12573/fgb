@@ -50,6 +50,11 @@ enum fgb_fetch_step {
 	FETCH_STEP_PUSH_1,
 };
 
+enum fgb_color_mode {
+    PPU_COLOR_MODE_NORMAL,
+    PPU_COLOR_MODE_TINTED,
+};
+
 typedef struct fgb_palette {
     uint32_t colors[4];
 } fgb_palette;
@@ -236,6 +241,7 @@ const uint32_t* fgb_ppu_get_back_buffer(const fgb_ppu* ppu);
 void fgb_ppu_lock_buffer(fgb_ppu* ppu);
 void fgb_ppu_unlock_buffer(fgb_ppu* ppu);
 void fgb_ppu_swap_buffers(fgb_ppu* ppu);
+void fgb_ppu_set_color_mode(fgb_ppu* ppu, enum fgb_color_mode mode);
 
 int fgb_ppu_get_tile_id_old(const fgb_ppu* ppu, int tile_map, int x, int y);
 const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_sprite);

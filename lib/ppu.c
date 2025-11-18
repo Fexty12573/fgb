@@ -150,6 +150,26 @@ void fgb_ppu_swap_buffers(fgb_ppu *ppu) {
     fgb_ppu_unlock_buffer(ppu);
 }
 
+void fgb_ppu_set_color_mode(fgb_ppu *ppu, enum fgb_color_mode mode) {
+    switch (mode) {
+    case PPU_COLOR_MODE_NORMAL:
+        ppu->bg_palette.colors[0] = ppu->obj_palette.colors[0] = 0xFFFFFFFF; // Color 0: White
+        ppu->bg_palette.colors[1] = ppu->obj_palette.colors[1] = 0xFFB0B0B0; // Color 1: Light Gray
+        ppu->bg_palette.colors[2] = ppu->obj_palette.colors[2] = 0xFF606060; // Color 2: Dark Gray
+        ppu->bg_palette.colors[3] = ppu->obj_palette.colors[3] = 0xFF000000; // Color 3: Black
+        break;
+    case PPU_COLOR_MODE_TINTED:
+        ppu->bg_palette.colors[0] = ppu->obj_palette.colors[0] = 0xFFD0F8E0; // Color 0: White
+        ppu->bg_palette.colors[1] = ppu->obj_palette.colors[1] = 0xFF70C088; // Color 1: Light Gray
+        ppu->bg_palette.colors[2] = ppu->obj_palette.colors[2] = 0xFF566834; // Color 2: Dark Gray
+        ppu->bg_palette.colors[3] = ppu->obj_palette.colors[3] = 0xFF201808; // Color 3: Black
+        break;
+    default:
+        log_warn("PPU: Unknown color mode %d", mode);
+        break;
+    }
+}
+
 uint8_t fgb_tile_get_pixel(const fgb_tile* tile, uint8_t x, uint8_t y) {
     const uint8_t lsb = tile->data[y * 2];
     const uint8_t msb = tile->data[y * 2 + 1];
