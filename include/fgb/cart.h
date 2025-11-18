@@ -74,6 +74,17 @@ enum fgb_cart_mode {
 	CART_MODE_ADVANCED = 1,
 };
 
+enum fgb_cart_rtc_register {
+    RTC_S,
+    RTC_M,
+    RTC_H,
+    RTC_DL,
+    RTC_DH,
+
+    RTC_REG_COUNT,
+    RTC_REG_START = 8,
+};
+
 typedef struct fgb_cart_header {
     /* 0x100 */ uint8_t entry_point[4];     // Usually NOP, JP 0x150
     /* 0x104 */ uint8_t logo[48];           // Nintendo logo
@@ -99,12 +110,19 @@ typedef struct fgb_cart {
     uint8_t ram_bank;
     uint8_t* rom_banks[FGB_CART_MAX_ROM_BANKS];
     uint8_t* ram_banks[FGB_CART_MAX_RAM_BANKS];
+    struct {
+        uint8_t latch[RTC_REG_COUNT];
+        uint8_t regs[RTC_REG_COUNT];
+        uint8_t last_latch;
+        uint32_t cycles;
+    } rtc;
 	bool ram_enabled;
     uint32_t ram_size_bytes;
     uint8_t rom_bank_mask;
     enum fgb_cart_mode mode;
 	uint8_t(*read)(const struct fgb_cart* cart, uint16_t addr);
 	void(*write)(struct fgb_cart* cart, uint16_t addr, uint8_t value);
+    void(*tick)(struct fgb_cart* cart);
 } fgb_cart;
 
 fgb_cart* fgb_cart_load(const uint8_t* data, size_t size);
@@ -112,5 +130,6 @@ void fgb_cart_destroy(fgb_cart* cart);
 
 uint8_t fgb_cart_read(const fgb_cart* cart, uint16_t addr);
 void fgb_cart_write(fgb_cart* cart, uint16_t addr, uint8_t value);
+void fgb_cart_tick(fgb_cart* cart);
 
 #endif // FGB_CART_H

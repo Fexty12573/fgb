@@ -431,8 +431,6 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
         ppu->dma_addr = (uint16_t)value << 8;
         ppu->dma_cycles = 0;
         ppu->dma_bytes = 0;
-
-        log_trace("PPU: Starting DMA transfer during mode %d", ppu->stat.mode);
         break;
 
     case 0xFF47:
