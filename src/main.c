@@ -289,7 +289,7 @@ static void render_line_sprites(void) {
                 (ImVec2) { 0, 0 },
                 (ImVec2) { 1, 1 }
             );
-            
+
             if (igBeginItemTooltip()) {
                 igText("Sprite %d", i);
                 igText("X: %d", sprite->x);
@@ -1078,6 +1078,9 @@ int main(int argc, char** argv) {
             .x = (content.x - image_size.x) / 2.0f,
             .y = (content.y - image_size.y) / 2.0f
         });
+
+        ImVec2 screen_pos;
+        igGetCursorScreenPos(&screen_pos);
         
         igImage(
             (ImTextureRef){ NULL, screen_texture },
@@ -1085,6 +1088,22 @@ int main(int argc, char** argv) {
             (ImVec2){ 0, 0 },
             (ImVec2){ 1, 1 }
         );
+
+        if (igBeginItemTooltip()) {
+            ImVec2 mouse_pos;
+            igGetMousePos(&mouse_pos);
+
+            const float u = (mouse_pos.x - screen_pos.x) / image_size.x;
+            const float v = (mouse_pos.y - screen_pos.y) / image_size.y;
+
+            const int px = (int)(u * SCREEN_WIDTH);
+            const int py = (int)(v * SCREEN_HEIGHT);
+
+            igText("Pixel: (%d, %d)", px, py);
+
+            igEndTooltip();
+        }
+
         igEnd();
 
         render_tilesets(tiles_per_row, block_textures);
