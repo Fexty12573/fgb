@@ -49,6 +49,7 @@ struct app {
     uint16_t disasm_addrs[DISASM_LINES];
 
     uint32_t framebuffer_textures[PPU_FRAMEBUFFER_COUNT];
+    uint32_t sprite_textures[PPU_OAM_SPRITES];
 };
 
 struct app g_app = {
@@ -70,7 +71,7 @@ struct app g_app = {
 static int emu_run(void* arg);
 static bool emu_start(void);
 static bool emu_stop(void);
-static void configure_cpu(void);
+static void configure_emu(void);
 
 static void set_disasm_addr(uint16_t addr) {
     g_app.disasm_addr = addr;
@@ -277,18 +278,29 @@ static void render_line_sprites(void) {
 
     igBegin("Line Sprites", NULL, ImGuiWindowFlags_None);
 
-    if (igBeginTable("##line-sprites", 11, ImGuiTableFlags_BordersOuter, (ImVec2) { 0, 0 }, 0.0f)) {
-        for (int i = 0; i < SCREEN_HEIGHT; i++) {
-            igTableNextColumn();
-            igText("%d", i);
+    if (igBeginTable("##line-sprites", 10, ImGuiTableFlags_BordersOuter | ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0, 0 }, 0.0f)) {
+        for (int i = 0; i < PPU_OAM_SPRITES; i++) {
+            const fgb_sprite* sprite = (const fgb_sprite*) &ppu->oam[i * sizeof(fgb_sprite)];
 
-            for (int j = 0; j < PPU_SCANLINE_SPRITES; j++) {
-                igTableNextColumn();
-                if (ppu->line_sprites[i][j] == 0xFF) {
-                    igText("  ");
-                } else {
-                    igText("%02d", ppu->line_sprites[i][j]);
-                }
+            igTableNextColumn();
+            igImage(
+                (ImTextureRef) { NULL, g_app.sprite_textures[i] },
+                (ImVec2) { 5 * PPU_SPRITE_W, 5 * PPU_SPRITE_H16 },
+                (ImVec2) { 0, 0 },
+                (ImVec2) { 1, 1 }
+            );
+            
+            if (igBeginItemTooltip()) {
+                igText("Sprite %d", i);
+                igText("X: %d", sprite->x);
+                igText("Y: %d", sprite->y);
+                igText("Tile: %02X", sprite->tile);
+                igText("Flags: %02X", sprite->flags);
+                igText("  Palette: %d", sprite->palette);
+                igText("  X Flip: %d", sprite->x_flip);
+                igText("  Y Flip: %d", sprite->y_flip);
+                igText("  Priority: %d", sprite->priority);
+                igEndTooltip();
             }
         }
 
@@ -823,7 +835,7 @@ static void drop_callback(GLFWwindow* window, int count, const char** paths) {
     log_info("Loading ROM: %s", paths[0]);
     g_app.emu = emu_init(paths[0]);
 
-    configure_cpu();
+    configure_emu();
     emu_start();
 }
 
@@ -926,7 +938,7 @@ bool emu_stop(void) {
     return true;
 }
 
-void configure_cpu(void) {
+void configure_emu(void) {
     set_disasm_addr(0x100);
     fgb_cpu_set_bp_callback(g_app.emu->cpu, on_breakpoint);
     fgb_cpu_set_step_callback(g_app.emu->cpu, on_step);
@@ -936,6 +948,8 @@ void configure_cpu(void) {
     ulog_set_level(LOG_DEBUG);
     fgb_emu_set_log_level(g_app.emu, LOG_DEBUG);
     g_app.emu->cpu->trace_count = 0;
+
+    fgb_ppu_set_color_mode(g_app.emu->ppu, PPU_COLOR_MODE_NORMAL);
 }
 
 int main(int argc, char** argv) {
@@ -976,7 +990,7 @@ int main(int argc, char** argv) {
         g_app.disasm_buffer_ptrs[i] = g_app.disasm_buffer[i];
     }
 
-    configure_cpu();
+    configure_emu();
 
     glDebugMessageCallback(gl_debug_callback, NULL);
 
@@ -987,34 +1001,12 @@ int main(int argc, char** argv) {
         [2] = fgb_create_tile_block_texture(tiles_per_row),
     };
 
-    uint32_t oam_textures[PPU_OAM_SPRITES];
-    fgb_create_oam_textures(oam_textures, PPU_OAM_SPRITES);
+    fgb_create_oam_textures(g_app.sprite_textures, PPU_OAM_SPRITES);
 
     const uint32_t screen_texture = fgb_create_screen_texture();
 
     uint32_t va, vb, ib;
     fgb_create_quad(&va, &vb, &ib);
-
-    const fgb_palette bg_pal = {
-        .colors = {
-            0xFFFFFFFF, // Color 3: White
-            0xFFB0B0B0, // Color 2: Light Gray
-            0xFF606060, // Color 1: Dark Gray
-            0xFF000000, // Color 0: Black
-        }
-    };
-
-    const fgb_palette obj_pal = {
-        .colors = {
-            0xFFFFFFFF, // Color 3: White
-            0xFFB0B0B0, // Color 2: Light Gray
-            0xFF606060, // Color 1: Dark Gray
-            0xFF000000, // Color 0: Black
-        }
-    };
-
-    g_app.emu->ppu->bg_palette = bg_pal;
-    g_app.emu->ppu->obj_palette = obj_pal;
 
 	g_app.framebuffer_textures[0] = screen_texture; // Front buffer
     g_app.framebuffer_textures[1] = fgb_create_screen_texture(); // Back buffer
@@ -1050,14 +1042,17 @@ int main(int argc, char** argv) {
 
         g_app.render_framerate = 1.0 / delta_time;
 
+        const fgb_palette* bg_pal = &g_app.emu->ppu->bg_palette;
+        const fgb_palette* obj_pal = &g_app.emu->ppu->obj_palette;
+
         glfwPollEvents();
 
         fgb_upload_screen_texture(screen_texture, g_app.emu->ppu);
         fgb_upload_back_buffer_texture(g_app.framebuffer_textures[1], g_app.emu->ppu);
-        fgb_upload_tile_block_texture(block_textures[0], tiles_per_row, g_app.emu->ppu, 0, &bg_pal);
-        fgb_upload_tile_block_texture(block_textures[1], tiles_per_row, g_app.emu->ppu, 1, &bg_pal);
-        fgb_upload_tile_block_texture(block_textures[2], tiles_per_row, g_app.emu->ppu, 2, &obj_pal);
-        fgb_upload_oam_textures(oam_textures, PPU_OAM_SPRITES, g_app.emu->ppu);
+        fgb_upload_tile_block_texture(block_textures[0], tiles_per_row, g_app.emu->ppu, 0, bg_pal);
+        fgb_upload_tile_block_texture(block_textures[1], tiles_per_row, g_app.emu->ppu, 1, bg_pal);
+        fgb_upload_tile_block_texture(block_textures[2], tiles_per_row, g_app.emu->ppu, 2, obj_pal);
+        fgb_upload_oam_textures(g_app.sprite_textures, PPU_OAM_SPRITES, g_app.emu->ppu);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();

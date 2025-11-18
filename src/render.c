@@ -176,7 +176,9 @@ void fgb_upload_oam_textures(const uint32_t* textures, int count, const fgb_ppu*
 
         for (int y = 0; y < PPU_SPRITE_H; y++) {
             for (int x = 0; x < PPU_SPRITE_W; x++) {
-                const uint8_t pixel_index = fgb_tile_get_pixel(tile, x, y);
+                const int real_x = sprite->x_flip ? (PPU_SPRITE_W - 1 - x) : x;
+                const int real_y = sprite->y_flip ? (PPU_SPRITE_H - 1 - y) : y;
+                const uint8_t pixel_index = fgb_tile_get_pixel(tile, real_x, real_y);
                 const int tex_x = sprite_x + x;
                 const int tex_y = sprite_y + y;
                 const int tex_index = (tex_y * texture_width) + tex_x;
