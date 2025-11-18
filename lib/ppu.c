@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include <ulog.h>
+#include <sort_r.h>
 
 #define OAM_SCAN_CYCLES             (80)  // T-cycles
 #define SCANLINE_CYCLES             (456) // T-cycles
@@ -548,6 +549,21 @@ uint8_t fgb_ppu_read_oam(const fgb_ppu* ppu, uint16_t addr) {
     return ppu->oam[addr];
 }
 
+static int fgb_ppu_compare_sprites(const void* a, const void* b, void* ctx) {
+    const fgb_ppu* ppu = ctx;
+
+    const int idx_a = (int)(*(const uint8_t*)a);
+    const int idx_b = (int)(*(const uint8_t*)b);
+    const fgb_sprite* sprite_a = (const fgb_sprite*)&ppu->oam[idx_a];
+    const fgb_sprite* sprite_b = (const fgb_sprite*)&ppu->oam[idx_b];
+
+    if (sprite_a->x == sprite_b->x) {
+        return idx_a - idx_b; // Lower OAM index has priority
+    }
+
+    return (int)sprite_a->x - (int)sprite_b->x; // Lower X coordinate has priority
+}
+
 void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
     if (ppu->oam_scan_done) {
         return;
@@ -572,6 +588,9 @@ void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
             break;
         }
     }
+
+    // Sort sprites by X coordinate (and OAM index for ties)
+    sort_r(ppu->sprite_buffer, ppu->sprite_count, sizeof(uint8_t), fgb_ppu_compare_sprites, ppu);
 
     ppu->oam_scan_done = true;
 }
