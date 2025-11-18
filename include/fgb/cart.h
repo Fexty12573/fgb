@@ -41,15 +41,15 @@ enum fgb_cart_type {
 };
 
 enum fgb_cart_rom_size {
-    ROM_SIZE_32KIB      = 0x00, // 32 KiB
-    ROM_SIZE_64KIB      = 0x01, // 64 KiB
-    ROM_SIZE_128KIB     = 0x02, // 128 KiB
-    ROM_SIZE_256KIB     = 0x03, // 256 KiB
-    ROM_SIZE_512KIB     = 0x04, // 512 KiB
-    ROM_SIZE_1MIB       = 0x05, // 1 MiB
-    ROM_SIZE_2MIB       = 0x06, // 2 MiB
-    ROM_SIZE_4MIB       = 0x07, // 4 MiB
-    ROM_SIZE_8MIB       = 0x08, // 8 MiB
+    ROM_SIZE_32KIB      = 0x00, // 32 KiB (2 banks)
+    ROM_SIZE_64KIB      = 0x01, // 64 KiB (4 banks)
+    ROM_SIZE_128KIB     = 0x02, // 128 KiB (8 banks)
+    ROM_SIZE_256KIB     = 0x03, // 256 KiB (16 banks)
+    ROM_SIZE_512KIB     = 0x04, // 512 KiB (32 banks)
+    ROM_SIZE_1MIB       = 0x05, // 1 MiB (64 banks)
+    ROM_SIZE_2MIB       = 0x06, // 2 MiB (128 banks)
+    ROM_SIZE_4MIB       = 0x07, // 4 MiB (256 banks)
+    ROM_SIZE_8MIB       = 0x08, // 8 MiB (512 banks)
     ROM_SIZE_1_1MIB     = 0x52, // 1.1 MiB
     ROM_SIZE_1_2MIB     = 0x53, // 1.2 MiB
     ROM_SIZE_1_5MIB     = 0x54, // 1.5 MiB
@@ -57,6 +57,7 @@ enum fgb_cart_rom_size {
 
 enum fgb_cart_ram_size {
     RAM_SIZE_0      = 0x00, // No RAM
+	RAM_SIZE_2KIB   = 0x01, // 2 KiB (Never used)
     RAM_SIZE_8KIB   = 0x02, // 8 KiB x1
     RAM_SIZE_32KIB  = 0x03, // 8 KiB x4
     RAM_SIZE_128KIB = 0x04, // 8 KiB x16
@@ -66,6 +67,22 @@ enum fgb_cart_ram_size {
 enum fgb_cart_dest_code {
     DEST_CODE_JAPAN     = 0x00,
     DEST_CODE_OVERSEAS  = 0x01,
+};
+
+enum fgb_cart_mode {
+    CART_MODE_SIMPLE = 0,
+	CART_MODE_ADVANCED = 1,
+};
+
+enum fgb_cart_rtc_register {
+    RTC_S,
+    RTC_M,
+    RTC_H,
+    RTC_DL,
+    RTC_DH,
+
+    RTC_REG_COUNT,
+    RTC_REG_START = 8,
 };
 
 typedef struct fgb_cart_header {
@@ -91,11 +108,21 @@ typedef struct fgb_cart {
     size_t rom_size;
     uint8_t rom_bank;
     uint8_t ram_bank;
-	uint8_t* rom_banks[FGB_CART_MAX_ROM_BANKS];
+    uint8_t* rom_banks[FGB_CART_MAX_ROM_BANKS];
     uint8_t* ram_banks[FGB_CART_MAX_RAM_BANKS];
+    struct {
+        uint8_t latch[RTC_REG_COUNT];
+        uint8_t regs[RTC_REG_COUNT];
+        uint8_t last_latch;
+        uint32_t cycles;
+    } rtc;
 	bool ram_enabled;
+    uint32_t ram_size_bytes;
+    uint8_t rom_bank_mask;
+    enum fgb_cart_mode mode;
 	uint8_t(*read)(const struct fgb_cart* cart, uint16_t addr);
 	void(*write)(struct fgb_cart* cart, uint16_t addr, uint8_t value);
+    void(*tick)(struct fgb_cart* cart);
 } fgb_cart;
 
 fgb_cart* fgb_cart_load(const uint8_t* data, size_t size);
@@ -103,5 +130,6 @@ void fgb_cart_destroy(fgb_cart* cart);
 
 uint8_t fgb_cart_read(const fgb_cart* cart, uint16_t addr);
 void fgb_cart_write(fgb_cart* cart, uint16_t addr, uint8_t value);
+void fgb_cart_tick(fgb_cart* cart);
 
 #endif // FGB_CART_H

@@ -12,6 +12,7 @@
 #include <GLFW/glfw3.h>
 #include <cimgui.h>
 #include <cimgui_impl.h>
+#include <string.h>
 
 #include "ulog.h"
 
@@ -23,6 +24,7 @@ size_t file_size(FILE* f) {
 }
 
 #define DISASM_LINES 20
+#define WINDOW_SCALE 2
 
 struct app {
     fgb_emu* emu;
@@ -33,24 +35,32 @@ struct app {
     int block_to_display;
     double render_framerate;
     double emu_framerate;
+    double emu_update_time;
+    bool reset_keep_breakpoints;
 
     float main_scale;
     GLFWwindow* window;
+
+    FILE* trace_file;
 
     uint16_t disasm_addr;
     char disasm_buffer[DISASM_LINES][64];
     char* disasm_buffer_ptrs[DISASM_LINES];
     uint16_t disasm_addrs[DISASM_LINES];
+
+    uint32_t framebuffer_textures[PPU_FRAMEBUFFER_COUNT];
+    uint32_t sprite_textures[PPU_OAM_SPRITES];
 };
 
 struct app g_app = {
     .emu = NULL,
     .running = true,
     .display_screen = true,
-	.emulate = true,
+    .emulate = true,
     .block_to_display = 0,
     .render_framerate = 0.0,
     .emu_framerate = 0.0,
+    .reset_keep_breakpoints = true,
     .main_scale = 1.0f,
     .window = NULL,
     .disasm_addr = 0x0100,
@@ -61,39 +71,52 @@ struct app g_app = {
 static int emu_run(void* arg);
 static bool emu_start(void);
 static bool emu_stop(void);
-static void configure_cpu(void);
+static void configure_emu(void);
 
 static void set_disasm_addr(uint16_t addr) {
     g_app.disasm_addr = addr;
     for (int i = 0; i < DISASM_LINES; i++) {
         g_app.disasm_addrs[i] = addr;
         addr = fgb_cpu_disassemble_one(g_app.emu->cpu, addr, g_app.disasm_buffer_ptrs[i], sizeof(*g_app.disasm_buffer));
-	}
+    }
 }
 
 static void on_breakpoint(fgb_cpu* cpu, size_t bp, uint16_t addr) {
     (void)cpu;
     (void)bp;
 
-    set_disasm_addr(addr);
+    if (addr < g_app.disasm_addrs[0] || addr > g_app.disasm_addrs[DISASM_LINES - 1]) {
+        set_disasm_addr(addr);
+    }
+
+    fflush(stdout);
+    fflush(stderr);
 }
 
 static void on_step(fgb_cpu* cpu) {
     // Behavior depends on where we are stepping from/to.
-	// If we step just outside of the current disassembly view,
-	// we need to update the view, but only so that the current
+    // If we step just outside of the current disassembly view,
+    // we need to update the view, but only so that the current
     // PC is visible.
-	const uint16_t pc = cpu->regs.pc;
-	const uint16_t last_addr = g_app.disasm_addrs[DISASM_LINES - 1];
-	const uint16_t after_last_addr = fgb_cpu_disassemble_one(cpu, last_addr, NULL, 0);
+    const uint16_t pc = cpu->regs.pc;
+    const uint16_t last_addr = g_app.disasm_addrs[DISASM_LINES - 1];
+    const uint16_t after_last_addr = fgb_cpu_disassemble_one(cpu, last_addr, NULL, 0);
 
     if (pc == after_last_addr) {
-	    // Stepped just past the end, shift down
+        // Stepped just past the end, shift down
         set_disasm_addr(g_app.disasm_addrs[1]);
     } else if (pc < g_app.disasm_addrs[0] || pc > last_addr) {
         // Stepped outside the current view, reset to PC
-		set_disasm_addr(pc);
+        set_disasm_addr(pc);
     }
+
+    fflush(stdout);
+    fflush(stderr);
+}
+
+static void log_cpu_trace(fgb_cpu* cpu, uint16_t addr, uint32_t depth, const char* disasm) {
+    (void)cpu;
+    fprintf(g_app.trace_file, "0x%04X:%*s%s\n", addr, 2 * (depth + 1), "", disasm);
 }
 
 static fgb_emu* emu_init(const char* rom_path) {
@@ -131,8 +154,8 @@ static GLFWwindow* window_init(void) {
     g_app.main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor(glfwGetPrimaryMonitor());
 
     GLFWwindow* window = glfwCreateWindow(
-        (int)(SCREEN_WIDTH * 5 * g_app.main_scale),
-        (int)(SCREEN_HEIGHT * 5 * g_app.main_scale),
+        (int)(SCREEN_WIDTH * WINDOW_SCALE * g_app.main_scale),
+        (int)(SCREEN_HEIGHT * WINDOW_SCALE * g_app.main_scale),
         "fgb", NULL, NULL
     );
 
@@ -235,7 +258,7 @@ static void imgui_init(void) {
     igStyleColorsDark(style);
 }
 
-static void render_tilesets(int tiles_per_row, ImTextureID* block_textures) {
+static void render_tilesets(int tiles_per_row, const uint32_t* block_textures) {
     igBegin("Tilesets", NULL, ImGuiWindowFlags_AlwaysAutoResize);
     for (int i = 0; i < TILE_BLOCK_COUNT; i++) {
         const int tile_rows = TILES_PER_BLOCK / tiles_per_row;
@@ -255,18 +278,29 @@ static void render_line_sprites(void) {
 
     igBegin("Line Sprites", NULL, ImGuiWindowFlags_None);
 
-    if (igBeginTable("##line-sprites", 11, ImGuiTableFlags_BordersOuter, (ImVec2) { 0, 0 }, 0.0f)) {
-        for (int i = 0; i < SCREEN_HEIGHT; i++) {
-            igTableNextColumn();
-            igText("%d", i);
+    if (igBeginTable("##line-sprites", 10, ImGuiTableFlags_BordersOuter | ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0, 0 }, 0.0f)) {
+        for (int i = 0; i < PPU_OAM_SPRITES; i++) {
+            const fgb_sprite* sprite = (const fgb_sprite*) &ppu->oam[i * sizeof(fgb_sprite)];
 
-            for (int j = 0; j < PPU_SCANLINE_SPRITES; j++) {
-                igTableNextColumn();
-                if (ppu->line_sprites[i][j] == 0xFF) {
-                    igText("  ");
-                } else {
-                    igText("%02d", ppu->line_sprites[i][j]);
-                }
+            igTableNextColumn();
+            igImage(
+                (ImTextureRef) { NULL, g_app.sprite_textures[i] },
+                (ImVec2) { 5 * PPU_SPRITE_W, 5 * PPU_SPRITE_H16 },
+                (ImVec2) { 0, 0 },
+                (ImVec2) { 1, 1 }
+            );
+
+            if (igBeginItemTooltip()) {
+                igText("Sprite %d", i);
+                igText("X: %d", sprite->x);
+                igText("Y: %d", sprite->y);
+                igText("Tile: %02X", sprite->tile);
+                igText("Flags: %02X", sprite->flags);
+                igText("  Palette: %d", sprite->palette);
+                igText("  X Flip: %d", sprite->x_flip);
+                igText("  Y Flip: %d", sprite->y_flip);
+                igText("  Priority: %d", sprite->priority);
+                igEndTooltip();
             }
         }
 
@@ -280,18 +314,37 @@ static void render_debug_options(void) {
     igBegin("Debug Options", NULL, ImGuiWindowFlags_None);
 
     if (igButton("Reset", (ImVec2) { 0, 0 })) {
+        uint16_t bps[FGB_CPU_MAX_BREAKPOINTS];
+        memcpy(bps, g_app.emu->cpu->breakpoints, sizeof(bps));
+
         fgb_emu_reset(g_app.emu);
+
+        if (g_app.reset_keep_breakpoints) {
+            memcpy(g_app.emu->cpu->breakpoints, bps, sizeof(bps));
+        }
     }
 
+    igSameLine(0.0f, -1.0f);
     if (igButton("Reset Paused", (ImVec2) { 0, 0 })) {
+        uint16_t bps[FGB_CPU_MAX_BREAKPOINTS];
+        memcpy(bps, g_app.emu->cpu->breakpoints, sizeof(bps));
+
         fgb_emu_reset(g_app.emu);
+
+        if (g_app.reset_keep_breakpoints) {
+            memcpy(g_app.emu->cpu->breakpoints, bps, sizeof(bps));
+        }
+
         g_app.emu->cpu->debugging = true;
         set_disasm_addr(g_app.emu->cpu->regs.pc);
-	}
-
-    if (igCheckbox("Trace", &g_app.emu->cpu->trace)) {
-        log_info("CPU trace %s", g_app.emu->cpu->trace ? "enabled" : "disabled");
     }
+
+    igSameLine(0.0f, -1.0f);
+    igCheckbox("Keep Breakpoints on Reset", &g_app.reset_keep_breakpoints);
+
+    igCheckbox("Test Mode", &g_app.emu->cpu->test_mode);
+
+    igInputInt("Trace", &g_app.emu->cpu->trace_count, 1, 100, ImGuiInputTextFlags_None);
 
     if (igCheckbox("Hide Background", &g_app.emu->ppu->debug.hide_bg)) {
         log_info("Background rendering %s", g_app.emu->ppu->debug.hide_bg ? "disabled" : "enabled");
@@ -360,16 +413,16 @@ static void render_debug_options(void) {
 
             igTableNextColumn();
 
-			const uint16_t addr = g_app.disasm_addrs[i];
+            const uint16_t addr = g_app.disasm_addrs[i];
             bool selected = fgb_cpu_get_bp_at(g_app.emu->cpu, addr) != -1;
             if (igCheckbox("##breakpoint", &selected)) {
-	            if (selected) {
+                if (selected) {
                     fgb_cpu_set_bp(g_app.emu->cpu, addr);
                     log_info("Breakpoint set at 0x%04X", addr);
                 } else {
                     fgb_cpu_clear_bp(g_app.emu->cpu, addr);
                     log_info("Breakpoint cleared at 0x%04X", addr);
-				}
+                }
             }
 
             igTableNextColumn();
@@ -378,11 +431,11 @@ static void render_debug_options(void) {
                 igTextUnformatted("->", NULL);
             } else {
                 igTextUnformatted("  ", NULL);
-			}
+            }
 
             igTableNextColumn();
 
-			igText("0x%04X", addr);
+            igText("0x%04X", addr);
 
             igTableNextColumn();
 
@@ -390,19 +443,20 @@ static void render_debug_options(void) {
 
             igPopID();
         }
-		igEndTable();
+        igEndTable();
     }
 
     igPopStyleColor(1);
 
-	fgb_cpu* cpu = g_app.emu->cpu;
-	fgb_cpu_regs* regs = &cpu->regs;
-
-    igSeparatorText("CPU State");
+	fgb_cpu* volatile cpu = g_app.emu->cpu;
 
     igPushID_Str("CPU_UI");
 
     if (igBeginTable("cpu_table", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV, (ImVec2) { 0, 0 }, 0.0f)) {
+        // Intentional copy to allow editing without risk of Race Conditions
+        const fgb_cpu_regs before_regs = cpu->regs;
+        fgb_cpu_regs regs = before_regs;
+
         // Left column: registers
         igTableNextRow(0, 0);
         igTableSetColumnIndex(0);
@@ -415,72 +469,72 @@ static void render_debug_options(void) {
             // Row: A / F   | inputs | AF
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
-        	igTextUnformatted("A / F", NULL);
+            igTextUnformatted("A / F", NULL);
 
             igTableSetColumnIndex(1);
-            igInputScalar("##A", ImGuiDataType_U8, &regs->a, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##A", ImGuiDataType_U8, &regs.a, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(2);
-            igInputScalar("##F", ImGuiDataType_U8, &regs->f, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##F", ImGuiDataType_U8, &regs.f, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
-        	igText("AF: %04X", cpu->regs.af);
+            igText("AF: %04X", cpu->regs.af);
 
             // Row: B / C   | inputs | BC
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
-        	igTextUnformatted("B / C", NULL);
+            igTextUnformatted("B / C", NULL);
 
             igTableSetColumnIndex(1);
-            igInputScalar("##B", ImGuiDataType_U8, &regs->b, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##B", ImGuiDataType_U8, &regs.b, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(2);
-            igInputScalar("##C", ImGuiDataType_U8, &regs->c, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##C", ImGuiDataType_U8, &regs.c, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
-        	igText("BC: %04X", cpu->regs.bc);
+            igText("BC: %04X", cpu->regs.bc);
 
             // Row: D / E   | inputs | DE
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
-        	igTextUnformatted("D / E", NULL);
+            igTextUnformatted("D / E", NULL);
 
             igTableSetColumnIndex(1);
-            igInputScalar("##D", ImGuiDataType_U8, &regs->d, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##D", ImGuiDataType_U8, &regs.d, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(2);
-            igInputScalar("##E", ImGuiDataType_U8, &regs->e, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##E", ImGuiDataType_U8, &regs.e, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
-        	igText("DE: %04X", cpu->regs.de);
+            igText("DE: %04X", cpu->regs.de);
 
             // Row: H / L   | inputs | HL
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
-        	igTextUnformatted("H / L", NULL);
+            igTextUnformatted("H / L", NULL);
 
             igTableSetColumnIndex(1);
-            igInputScalar("##H", ImGuiDataType_U8, &regs->h, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##H", ImGuiDataType_U8, &regs.h, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(2);
-            igInputScalar("##L", ImGuiDataType_U8, &regs->l, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##L", ImGuiDataType_U8, &regs.l, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igTableSetColumnIndex(3);
-        	igText("HL: %04X", cpu->regs.hl);
+            igText("HL: %04X", cpu->regs.hl);
 
             igTableNextRow(0, 0);
             igTableSetColumnIndex(0);
-			igTextUnformatted("SP", NULL);
-
-			igTableSetColumnIndex(1);
-			igInputScalar("##SP", ImGuiDataType_U16, &regs->sp, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
-
-            igTableNextRow(0, 0);
-            igTableSetColumnIndex(0);
-			igTextUnformatted("PC", NULL);
+            igTextUnformatted("SP", NULL);
 
             igTableSetColumnIndex(1);
-			igInputScalar("##PC", ImGuiDataType_U16, &regs->pc, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
+            igInputScalar("##SP", ImGuiDataType_U16, &regs.sp, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
+
+            igTableNextRow(0, 0);
+            igTableSetColumnIndex(0);
+            igTextUnformatted("PC", NULL);
+
+            igTableSetColumnIndex(1);
+            igInputScalar("##PC", ImGuiDataType_U16, &regs.pc, NULL, NULL, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
 
             igEndTable();
         }
@@ -488,80 +542,93 @@ static void render_debug_options(void) {
         igPopItemWidth();
         igPopID(); // Regs
 
+        if (memcmp(&before_regs, &regs, sizeof(fgb_cpu_regs)) != 0) {
+			// Registers were modified, apply changes
+            cpu->regs = regs;
+		}
+
         // Right column: flags + misc
         igTableSetColumnIndex(1);
 
         igSeparatorText("Flags");
         igPushID_Str("Flags");
 
-        bool c = regs->flags.c;
-        bool h = regs->flags.h;
-        bool n = regs->flags.n;
-        bool z = regs->flags.z;
+		bool c = fgb_cpu_get_flag(cpu, CPU_FLAG_C);
+        bool h = fgb_cpu_get_flag(cpu, CPU_FLAG_H);
+        bool n = fgb_cpu_get_flag(cpu, CPU_FLAG_N);
+        bool z = fgb_cpu_get_flag(cpu, CPU_FLAG_Z);
 
         // Put flags in a compact 4-column table
         if (igBeginTable("flags_tbl", 4, ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0, 0 }, 0.0f)) {
             igTableNextRow(0, 0);
-            igTableSetColumnIndex(0); igCheckbox("C", &c);
-            igTableSetColumnIndex(1); igCheckbox("H", &h);
-            igTableSetColumnIndex(2); igCheckbox("N", &n);
-            igTableSetColumnIndex(3); igCheckbox("Z", &z);
+            igTableSetColumnIndex(0); if (igCheckbox("C", &c)) { fgb_cpu_set_flag(cpu, CPU_FLAG_C, c); }
+            igTableSetColumnIndex(1); if (igCheckbox("H", &h)) { fgb_cpu_set_flag(cpu, CPU_FLAG_H, h); }
+            igTableSetColumnIndex(2); if (igCheckbox("N", &n)) { fgb_cpu_set_flag(cpu, CPU_FLAG_N, n); }
+            igTableSetColumnIndex(3); if (igCheckbox("Z", &z)) { fgb_cpu_set_flag(cpu, CPU_FLAG_Z, z); }
             igEndTable();
         }
-
-        regs->flags.c = c;
-        regs->flags.h = h;
-        regs->flags.n = n;
-        regs->flags.z = z;
 
         igPopID(); // Flags
 
         igSeparatorText("Misc");
-        igCheckbox("IME", &cpu->ime);
-        igCheckbox("Halted", &cpu->halted);
+
+		bool ime = cpu->ime;
+        if (igCheckbox("IME", &ime)) {
+            cpu->ime = ime;
+        }
+
+        igText("Mode: %d", cpu->mode);
         igText("IE: %02X", cpu->interrupt.enable);
         igText("IF: %02X", cpu->interrupt.flags);
+        igText("T-Cycles: %llu", cpu->total_cycles);
+        igText("M-Cycles: %llu", cpu->total_cycles / 4);
 
         // Timer
-        fgb_timer* timer = &cpu->timer;
+        fgb_timer timer = cpu->timer;
+        bool modified = false;
 
         igTableNextRow(0, 0);
         igTableSetColumnIndex(0);
 
         if (igBeginTable("timer_tbl", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_SizingFixedFit, (ImVec2) { 0.0f, 0 }, 0.0f)) {
-			igTableSetupColumn("DIV", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("DIV", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
             igTableSetupColumn("DIV Reg", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
-			igTableSetupColumn("TIMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
-			igTableSetupColumn("TMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
-			igTableSetupColumn("TAC", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
-			igTableSetupColumn("Reload", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("TIMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("TMA", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("TAC", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
+            igTableSetupColumn("Reload", ImGuiTableColumnFlags_WidthFixed, 64.0f, 0);
             igTableHeadersRow();
-			igTableNextRow(0, 0);
+            igTableNextRow(0, 0);
 
-			uint8_t divreg = (timer->divider >> 8) & 0xFF;
+            uint8_t divreg = (timer.divider >> 8) & 0xFF;
 
             igTableNextColumn();
-            igInputScalar("##div", ImGuiDataType_U16, &timer->divider, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            modified |= igInputScalar("##div", ImGuiDataType_U16, &timer.divider, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-			igInputScalar("##divreg", ImGuiDataType_U8, &divreg, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            modified |= igInputScalar("##divreg", ImGuiDataType_U8, &divreg, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-			igInputScalar("##tima", ImGuiDataType_U8, &timer->counter, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            modified |= igInputScalar("##tima", ImGuiDataType_U8, &timer.counter, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-			igInputScalar("##tma", ImGuiDataType_U8, &timer->modulo, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            modified |= igInputScalar("##tma", ImGuiDataType_U8, &timer.modulo, NULL, NULL, "%d", ImGuiInputTextFlags_None);
             igTableNextColumn();
-			igInputScalar("##tac", ImGuiDataType_U8, &timer->control, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
+            modified |= igInputScalar("##tac", ImGuiDataType_U8, &timer.control, NULL, NULL, "%02X", ImGuiInputTextFlags_CharsHexadecimal);
             igTableNextColumn();
-			igInputScalar("##reload", ImGuiDataType_U8, &timer->ticks_since_overflow, NULL, NULL, "%d", ImGuiInputTextFlags_None);
+            modified |= igInputScalar("##reload", ImGuiDataType_U8, &timer.ticks_since_overflow, NULL, NULL, "%d", ImGuiInputTextFlags_None);
 
-			timer->divider = (uint16_t)((uint16_t)divreg << 8) | (timer->divider & 0x00FF);
+            timer.divider = (uint16_t)((uint16_t)divreg << 8) | (timer.divider & 0x00FF);
             
             igEndTable();
         }
 
+        if (modified) {
+			// Timer was modified, apply changes
+            cpu->timer = timer;
+		}
+
         igEndTable();
     }
 
-	igPopID(); // CPU_UI
+    igPopID(); // CPU_UI
 
     igEndChild();
 
@@ -576,6 +643,109 @@ static void render_debug_options(void) {
     igEnd();
 }
 
+static void render_ppu_options(void) {
+	igBegin("PPU", NULL, ImGuiWindowFlags_None);
+
+	fgb_ppu* ppu = g_app.emu->ppu;
+
+    if (igBeginTable("ppu_table", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV, (ImVec2) { 0, 0 }, 0.0f)) {
+        igTableNextRow(0, 0);
+        igTableSetColumnIndex(0);
+        igText("Mode: %d", ppu->stat.mode);
+
+        igTableSetColumnIndex(1);
+        ImVec4 color;
+        igColorConvertU32ToFloat4(&color, ppu->debug.window_color);
+        if (igColorEdit4("Window Color", &color.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar)) {
+			ppu->debug.window_color = igColorConvertFloat4ToU32(color);
+        }
+
+        igTableNextRow(0, 0);
+        igTableSetColumnIndex(0);
+        igText("Scanline: %d", ppu->ly);
+
+        igTableSetColumnIndex(1);
+        igTextUnformatted("-----", NULL);
+
+        igTableNextRow(0, 0);
+        igTableSetColumnIndex(0);
+        igText("Cycle: %d", ppu->mode_cycles);
+
+        igTableSetColumnIndex(1);
+        igTextUnformatted("-----", NULL);
+
+        igTableNextRow(0, 0);
+		igTableSetColumnIndex(0);
+
+        struct { uint8_t x, y; } window_pos = {
+            .x = ppu->window_pos.x,
+            .y = ppu->window_pos.y,
+		};
+
+        igSetNextItemWidth(200.0f);
+        if (igInputScalarN("Window Pos", ImGuiDataType_U8, &window_pos.x, 2, NULL, NULL, "%d", ImGuiInputTextFlags_None)) {
+            ppu->window_pos.x = window_pos.x;
+            ppu->window_pos.y = window_pos.y;
+        }
+
+        igEndTable();
+
+        if (igCollapsingHeader_BoolPtr("Front Buffer", NULL, ImGuiTreeNodeFlags_None)) {
+	        igImage((ImTextureRef){NULL, g_app.framebuffer_textures[0]},
+	            (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
+	            (ImVec2){0, 0},
+	            (ImVec2){1, 1}
+			);
+        }
+
+        if (igCollapsingHeader_BoolPtr("Back Buffer", NULL, ImGuiTreeNodeFlags_None)) {
+	        igImage((ImTextureRef){NULL, g_app.framebuffer_textures[1]},
+	            (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
+	            (ImVec2){0, 0},
+	            (ImVec2){1, 1}
+			);
+        }
+
+        if (igCollapsingHeader_BoolPtr("Tile Map 0 ($9800)", NULL, ImGuiTreeNodeFlags_None)) {
+            for (int y = 0; y < 32; y++) {
+                for (int x = 0; x < 32; x++) {
+					const uint8_t tile_index = ppu->vram[0x1800 + y * 32 + x];
+                    float r, g, b;
+                    igColorConvertHSVtoRGB((float)tile_index / 255.0f, 1.0f, 1.0f, &r, &g, &b);
+                    igTextColored((ImVec4) { r, g, b, 1 }, "%02X", tile_index);
+                    if (igBeginItemTooltip()) {
+						igText("(%d, %d)", x, y);
+						igEndTooltip();
+                    }
+                    igSameLine(0, -1);
+                }
+
+                igNewLine();
+            }
+        }
+
+        if (igCollapsingHeader_BoolPtr("Tile Map 1 ($9C00)", NULL, ImGuiTreeNodeFlags_None)) {
+            for (int y = 0; y < 32; y++) {
+                for (int x = 0; x < 32; x++) {
+                    const uint8_t tile_index = ppu->vram[0x1C00 + y * 32 + x];
+                    float r, g, b;
+                    igColorConvertHSVtoRGB((float)tile_index / 255.0f, 1.0f, 1.0f, &r, &g, &b);
+                    igTextColored((ImVec4) { r, g, b, 1 }, "%02X", tile_index);
+                    if (igBeginItemTooltip()) {
+						igText("(%d, %d)", x, y);
+						igEndTooltip();
+                    }
+                    igSameLine(0, -1);
+                }
+
+                igNewLine();
+            }
+        }
+	}
+
+    igEnd();
+}
+
 static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
@@ -584,8 +754,8 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
     fgb_emu* emu = g_app.emu;
     if (action == GLFW_PRESS) {
         if (key == GLFW_KEY_T) {
-            emu->cpu->trace = !emu->cpu->trace;
-            log_info("CPU trace %s", emu->cpu->trace ? "enabled" : "disabled");
+            emu->cpu->trace_count = emu->cpu->trace_count == 0 ? -1 : 0;
+            log_info("CPU trace %s", emu->cpu->trace_count > 0 ? "enabled" : "disabled");
         }
         if (key == GLFW_KEY_R) {
             fgb_cpu_reset(emu->cpu);
@@ -655,18 +825,18 @@ static void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 static void drop_callback(GLFWwindow* window, int count, const char** paths) {
     (void)window;
     if (count != 1) {
-		log_warn("Please drop a single ROM file");
+        log_warn("Please drop a single ROM file");
         return;
-	}
+    }
 
     emu_stop();
     fgb_emu_destroy(g_app.emu);
 
-	log_info("Loading ROM: %s", paths[0]);
-	g_app.emu = emu_init(paths[0]);
+    log_info("Loading ROM: %s", paths[0]);
+    g_app.emu = emu_init(paths[0]);
 
-    configure_cpu();
-	emu_start();
+    configure_emu();
+    emu_start();
 }
 
 static void gl_debug_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam) {
@@ -724,7 +894,7 @@ static int emu_run(void* arg) {
     while (g_app.running && g_app.emulate) {
         const double start_time = glfwGetTime();
 
-        fgb_cpu_step(emu->cpu);
+        fgb_cpu_run_frame(emu->cpu);
 
         const double end_time = glfwGetTime();
         const double elapsed = end_time - start_time;
@@ -738,6 +908,7 @@ static int emu_run(void* arg) {
 
         const double actual_frametime = glfwGetTime() - start_time;
         g_app.emu_framerate = 1.0 / actual_frametime;
+        g_app.emu_update_time = elapsed;
 
         error = frametime - actual_frametime;
     }
@@ -746,35 +917,39 @@ static int emu_run(void* arg) {
 }
 
 bool emu_start(void) {
+    g_app.emulate = true;
     if (thrd_create(&g_app.emu_thread, emu_run, g_app.emu) != thrd_success) {
         log_error("Could not create emulator thread. Exiting");
-		return false;
+        return false;
     }
 
-	g_app.emulate = true;
     return true;
 }
 
 bool emu_stop(void) {
     g_app.emulate = false;
+    g_app.emu->cpu->mode = CPU_MODE_NORMAL; // Ensure CPU is not in halt or stop mode
     int res = 0;
     if (thrd_join(g_app.emu_thread, &res) != thrd_success) {
         log_error("Could not join emulator thread. Exiting");
-		return false;
-	}
+        return false;
+    }
 
     return true;
 }
 
-void configure_cpu(void) {
+void configure_emu(void) {
     set_disasm_addr(0x100);
     fgb_cpu_set_bp_callback(g_app.emu->cpu, on_breakpoint);
     fgb_cpu_set_step_callback(g_app.emu->cpu, on_step);
+    fgb_cpu_set_trace_callback(g_app.emu->cpu, log_cpu_trace);
 
     ulog_set_quiet(false);
     ulog_set_level(LOG_DEBUG);
     fgb_emu_set_log_level(g_app.emu, LOG_DEBUG);
-    g_app.emu->cpu->trace = false;
+    g_app.emu->cpu->trace_count = 0;
+
+    fgb_ppu_set_color_mode(g_app.emu->ppu, PPU_COLOR_MODE_NORMAL);
 }
 
 int main(int argc, char** argv) {
@@ -798,6 +973,12 @@ int main(int argc, char** argv) {
     }
 
     imgui_init();
+
+    g_app.trace_file = fopen("cpu_trace.log", "w");
+    if (!g_app.trace_file) {
+        printf("Could not open trace log file. Exiting\n");
+        return 1;
+    }
     
     g_app.emu = emu_init(argv[1]);
     if (!g_app.emu) {
@@ -809,7 +990,7 @@ int main(int argc, char** argv) {
         g_app.disasm_buffer_ptrs[i] = g_app.disasm_buffer[i];
     }
 
-    configure_cpu();
+    configure_emu();
 
     glDebugMessageCallback(gl_debug_callback, NULL);
 
@@ -820,41 +1001,22 @@ int main(int argc, char** argv) {
         [2] = fgb_create_tile_block_texture(tiles_per_row),
     };
 
-    uint32_t oam_textures[PPU_OAM_SPRITES];
-    fgb_create_oam_textures(oam_textures, PPU_OAM_SPRITES);
+    fgb_create_oam_textures(g_app.sprite_textures, PPU_OAM_SPRITES);
 
     const uint32_t screen_texture = fgb_create_screen_texture();
 
     uint32_t va, vb, ib;
     fgb_create_quad(&va, &vb, &ib);
 
-    const fgb_palette bg_pal = {
-        .colors = {
-            0xFFFFFFFF, // Color 3: White
-            0xFFB0B0B0, // Color 2: Light Gray
-            0xFF606060, // Color 1: Dark Gray
-            0xFF000000, // Color 0: Black
-        }
-    };
-
-    const fgb_palette obj_pal = {
-        .colors = {
-            0xFFFFFFFF, // Color 3: White
-            0xFFB0B0B0, // Color 2: Light Gray
-            0xFF606060, // Color 1: Dark Gray
-            0xFF000000, // Color 0: Black
-        }
-    };
-
-    g_app.emu->ppu->bg_palette = bg_pal;
-    g_app.emu->ppu->obj_palette = obj_pal;
+	g_app.framebuffer_textures[0] = screen_texture; // Front buffer
+    g_app.framebuffer_textures[1] = fgb_create_screen_texture(); // Back buffer
 
     glfwSetKeyCallback(window, key_callback);
-	glfwSetDropCallback(window, drop_callback);
+    glfwSetDropCallback(window, drop_callback);
 
     if (!emu_start()) {
         return 1;
-	}
+    }
 
     double last_time = glfwGetTime();
     double last_title_update = last_time;
@@ -866,20 +1028,31 @@ int main(int argc, char** argv) {
 
         if (current_time - last_title_update >= 1.0) {
             char title[256];
-            snprintf(title, sizeof(title), "fgb - FPS: %.2f, Emu FPS: %.2f", g_app.render_framerate, g_app.emu_framerate);
+            snprintf(
+                title,
+                sizeof(title),
+                "fgb - FPS: %.2f, Emu FPS: %.2f, Emu Upd: %.02fus",
+                g_app.render_framerate,
+                g_app.emu_framerate,
+                g_app.emu_update_time * 1e6
+            );
             glfwSetWindowTitle(window, title);
             last_title_update = current_time;
         }
 
         g_app.render_framerate = 1.0 / delta_time;
 
+        const fgb_palette* bg_pal = &g_app.emu->ppu->bg_palette;
+        const fgb_palette* obj_pal = &g_app.emu->ppu->obj_palette;
+
         glfwPollEvents();
 
         fgb_upload_screen_texture(screen_texture, g_app.emu->ppu);
-        fgb_upload_tile_block_texture(block_textures[0], tiles_per_row, g_app.emu->ppu, 0, &bg_pal);
-        fgb_upload_tile_block_texture(block_textures[1], tiles_per_row, g_app.emu->ppu, 1, &bg_pal);
-        fgb_upload_tile_block_texture(block_textures[2], tiles_per_row, g_app.emu->ppu, 2, &obj_pal);
-        fgb_upload_oam_textures(oam_textures, PPU_OAM_SPRITES, g_app.emu->ppu);
+        fgb_upload_back_buffer_texture(g_app.framebuffer_textures[1], g_app.emu->ppu);
+        fgb_upload_tile_block_texture(block_textures[0], tiles_per_row, g_app.emu->ppu, 0, bg_pal);
+        fgb_upload_tile_block_texture(block_textures[1], tiles_per_row, g_app.emu->ppu, 1, bg_pal);
+        fgb_upload_tile_block_texture(block_textures[2], tiles_per_row, g_app.emu->ppu, 2, obj_pal);
+        fgb_upload_oam_textures(g_app.sprite_textures, PPU_OAM_SPRITES, g_app.emu->ppu);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -905,6 +1078,9 @@ int main(int argc, char** argv) {
             .x = (content.x - image_size.x) / 2.0f,
             .y = (content.y - image_size.y) / 2.0f
         });
+
+        ImVec2 screen_pos;
+        igGetCursorScreenPos(&screen_pos);
         
         igImage(
             (ImTextureRef){ NULL, screen_texture },
@@ -912,11 +1088,28 @@ int main(int argc, char** argv) {
             (ImVec2){ 0, 0 },
             (ImVec2){ 1, 1 }
         );
+
+        if (igBeginItemTooltip()) {
+            ImVec2 mouse_pos;
+            igGetMousePos(&mouse_pos);
+
+            const float u = (mouse_pos.x - screen_pos.x) / image_size.x;
+            const float v = (mouse_pos.y - screen_pos.y) / image_size.y;
+
+            const int px = (int)(u * SCREEN_WIDTH);
+            const int py = (int)(v * SCREEN_HEIGHT);
+
+            igText("Pixel: (%d, %d)", px, py);
+
+            igEndTooltip();
+        }
+
         igEnd();
 
         render_tilesets(tiles_per_row, block_textures);
         render_line_sprites();
         render_debug_options();
+		render_ppu_options();
 
         igRender();
 
@@ -941,6 +1134,9 @@ int main(int argc, char** argv) {
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
+
+    fclose(g_app.trace_file);
+
     igDestroyContext(NULL);
 
     glfwDestroyWindow(window);

@@ -1,3 +1,6 @@
 build/
 .vs/
 .vscode/
+*.log
+imgui.ini
+data/test-roms/

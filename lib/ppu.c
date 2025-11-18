@@ -5,11 +5,12 @@
 #include <string.h>
 
 #include <ulog.h>
+#include <sort_r.h>
 
 #define OAM_SCAN_CYCLES             (80)  // T-cycles
-#define SCANLINE_CYCLES             (172) // T-cycles
-#define HBLANK_CYCLES               (204) // T-cycles
-#define VBLANK_CYCLES               (456) // T-cycles
+#define SCANLINE_CYCLES             (456) // T-cycles
+#define VBLANK_CYCLES               SCANLINE_CYCLES
+#define HBLANK_MAX_CYCLES           (SCANLINE_CYCLES - OAM_SCAN_CYCLES)
 
 #define TILE_MAP_BASE               (0x9800 - 0x8000)
 #define TILE_MAP_WIDTH              32
@@ -22,8 +23,20 @@
 #define TILE_DATA_BLOCK_OFFSET(BLOCK)    (TILE_DATA_BLOCK_BASE + (BLOCK) * TILE_BLOCK_SIZE)
 #define TILE_DATA_OFFSET(BLOCK, TILE)    (TILE_DATA_BLOCK_OFFSET(BLOCK) + (TILE) * TILE_SIZE_BYTES)
 
+#define TILE_PIXEL(LSB, MSB, X)    (((((MSB) >> (7 - (X))) & 1) << 1) | (((LSB) >> (7 - (X))) & 1))
+
 static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count);
 static void fgb_ppu_do_oam_scan(fgb_ppu* ppu);
+static void fgb_ppu_pixel_fetcher_tick(fgb_ppu* ppu);
+static void fgb_ppu_lcd_push(fgb_ppu* ppu);
+static void fgb_ppu_try_stat_irq(fgb_ppu* ppu);
+
+static void fgb_queue_push(fgb_queue* queue, fgb_pixel pixel);
+static fgb_pixel fgb_queue_pop(fgb_queue* queue);
+static fgb_pixel* fgb_queue_at(fgb_queue* queue, int index);
+static bool fgb_queue_full(const fgb_queue* queue);
+static bool fgb_queue_empty(const fgb_queue* queue);
+static void fgb_queue_clear(fgb_queue* queue);
 
 fgb_ppu* fgb_ppu_create(void) {
     fgb_ppu* ppu = malloc(sizeof(fgb_ppu));
@@ -62,39 +75,62 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
     memset(ppu->vram, 0, sizeof(ppu->vram));
     memset(ppu->oam, 0, sizeof(ppu->oam));
     memset(ppu->framebuffers, 0, sizeof(ppu->framebuffers));
-    memset(ppu->line_sprites, 0, sizeof(ppu->line_sprites));
+    memset(ppu->line_sprites, 0xFF, sizeof(ppu->line_sprites));
 
     ppu->back_buffer = 0;
     ppu->mode_cycles = 0;
     ppu->frame_cycles = 0;
+    ppu->scanline_cycles = 0;
     ppu->pixels_drawn = 0;
     ppu->sprite_count = 0;
 
+    fgb_queue_clear(&ppu->bg_wnd_fifo);
+	fgb_queue_clear(&ppu->sprite_fifo);
+
+    ppu->reached_window_x = false;
+    ppu->reached_window_y = false;
+    ppu->window_line_counter = 0;
+
+	ppu->bg_wnd_fetch_step = FETCH_STEP_TILE_0;
+	ppu->fetch_tile_id = 0;
+	ppu->fetch_x = 0;
+	ppu->bg_wnd_tile_lo = 0;
+	ppu->bg_wnd_tile_hi = 0;
+	ppu->is_first_fetch = true;
+	ppu->sprite_fetch_active = false;
+	ppu->processed_pixels = 0;
+	ppu->framebuffer_x = 0;
+
     ppu->oam_scan_done = false;
+    ppu->reset = false;
     ppu->frames_rendered = 0;
-    ppu->lcd_control.value = 0x00;
+    ppu->lcd_control.value = 0x91;
     ppu->ly = 0;
     ppu->lyc = 0;
-    ppu->stat.value = 0x00;
+    ppu->stat.value = 0x81;
     ppu->scroll.x = 0;
     ppu->scroll.y = 0;
     ppu->window_pos.x = 0;
     ppu->window_pos.y = 0;
-    ppu->bgp.value = 0x00;
-    ppu->obp[0].value = 0x00;
-    ppu->obp[1].value = 0x00;
+    ppu->bgp.value = 0xFC;
+    ppu->obp[0].value = 0xFF;
+    ppu->obp[1].value = 0xFF;
     ppu->debug.hide_bg = false;
     ppu->debug.hide_sprites = false;
     ppu->debug.hide_window = false;
     ppu->dma_active = false;
-    ppu->dma = 0;
+    ppu->dma = 0xFF;
     ppu->dma_addr = 0;
     ppu->dma_bytes = 0;
-	ppu->dma_cycles = 0;
+    ppu->dma_cycles = 0;
 }
 
 const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu) {
     return ppu->framebuffers[(ppu->back_buffer + PPU_FRAMEBUFFER_COUNT - 1) % PPU_FRAMEBUFFER_COUNT];
+}
+
+const uint32_t* fgb_ppu_get_back_buffer(const fgb_ppu* ppu) {
+	return ppu->framebuffers[ppu->back_buffer];
 }
 
 void fgb_ppu_lock_buffer(fgb_ppu* ppu) {
@@ -109,14 +145,62 @@ void fgb_ppu_unlock_buffer(fgb_ppu* ppu) {
     }
 }
 
+void fgb_ppu_swap_buffers(fgb_ppu *ppu) {
+    fgb_ppu_lock_buffer(ppu);
+    ppu->back_buffer = (ppu->back_buffer + 1) % PPU_FRAMEBUFFER_COUNT;
+    fgb_ppu_unlock_buffer(ppu);
+}
+
+void fgb_ppu_set_color_mode(fgb_ppu *ppu, enum fgb_color_mode mode) {
+    switch (mode) {
+    case PPU_COLOR_MODE_NORMAL:
+        ppu->bg_palette.colors[0] = ppu->obj_palette.colors[0] = 0xFFFFFFFF; // Color 0: White
+        ppu->bg_palette.colors[1] = ppu->obj_palette.colors[1] = 0xFFB0B0B0; // Color 1: Light Gray
+        ppu->bg_palette.colors[2] = ppu->obj_palette.colors[2] = 0xFF606060; // Color 2: Dark Gray
+        ppu->bg_palette.colors[3] = ppu->obj_palette.colors[3] = 0xFF000000; // Color 3: Black
+        break;
+    case PPU_COLOR_MODE_TINTED:
+        ppu->bg_palette.colors[0] = ppu->obj_palette.colors[0] = 0xFFD0F8E0; // Color 0: White
+        ppu->bg_palette.colors[1] = ppu->obj_palette.colors[1] = 0xFF70C088; // Color 1: Light Gray
+        ppu->bg_palette.colors[2] = ppu->obj_palette.colors[2] = 0xFF566834; // Color 2: Dark Gray
+        ppu->bg_palette.colors[3] = ppu->obj_palette.colors[3] = 0xFF201808; // Color 3: Black
+        break;
+    default:
+        log_warn("PPU: Unknown color mode %d", mode);
+        break;
+    }
+}
+
 uint8_t fgb_tile_get_pixel(const fgb_tile* tile, uint8_t x, uint8_t y) {
     const uint8_t lsb = tile->data[y * 2];
     const uint8_t msb = tile->data[y * 2 + 1];
     return ((msb >> (7 - x)) & 1) << 1 | ((lsb >> (7 - x)) & 1);
 }
 
-int fgb_ppu_get_tile_id(const fgb_ppu* ppu, int tile_map, int x, int y) {
+int fgb_ppu_get_tile_id_old(const fgb_ppu* ppu, int tile_map, int x, int y) {
     return ppu->vram[TILE_OFFSET(tile_map, x, y)];
+}
+
+int fgb_ppu_get_tile_id(const fgb_ppu* ppu) {
+    int offset;
+    if (ppu->reached_window_x) {
+        offset = ppu->fetch_x + (TILE_MAP_WIDTH * (ppu->window_line_counter / 8));
+        offset += TILE_MAP_OFFSET(ppu->lcd_control.wnd_tile_map);
+    } else {
+        offset = (ppu->fetch_x + (ppu->scroll.x / 8)) & 0x1F;
+        offset += TILE_MAP_WIDTH * (((ppu->ly + ppu->scroll.y) & 0xFF) / 8);
+        offset += TILE_MAP_OFFSET(ppu->lcd_control.bg_tile_map);
+    }
+
+    return ppu->vram[offset];
+}
+
+int fgb_ppu_get_current_tile_y(const fgb_ppu* ppu) {
+    if (ppu->reached_window_x) {
+        return 2 * (ppu->window_line_counter % 8);
+    } else {
+        return 2 * ((ppu->ly + ppu->scroll.y) % 8);
+    }
 }
 
 const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_sprite) {
@@ -125,12 +209,21 @@ const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_s
         return (fgb_tile*)&ppu->vram[TILE_DATA_OFFSET(0, tile_id)];
     }
 
-    int tile_block = tile_id > 127 ? 2 : 1; // Tile ID > 127 uses block 2, otherwise block 1
+    int tile_block = tile_id > 127 ? 1 : 2; // Tile ID > 127 uses block 1, otherwise block 2
     return (fgb_tile*)&ppu->vram[TILE_DATA_OFFSET(tile_block, tile_id % 128)];
 }
 
-uint32_t fgb_ppu_get_bg_color(const fgb_ppu* ppu, uint8_t pixel_index) {
-    return ppu->bg_palette.colors[(ppu->bgp.value >> (pixel_index * 2)) & 0x3];
+uint32_t fgb_ppu_get_bg_color(const fgb_ppu* ppu, fgb_pixel pixel) {
+	// Debug override
+    if (ppu->debug.window_color >> 24 && pixel.is_wnd) {
+        return ppu->debug.window_color;
+	}
+
+    if (!ppu->lcd_control.bg_wnd_enable) {
+        return ppu->bg_palette.colors[0]; // Background disabled, always color 0
+	}
+
+    return ppu->bg_palette.colors[(ppu->bgp.value >> (pixel.color * 2)) & 0x3];
 }
 
 uint32_t fgb_ppu_get_obj_color(const fgb_ppu* ppu, uint8_t pixel_index, int palette) {
@@ -138,17 +231,51 @@ uint32_t fgb_ppu_get_obj_color(const fgb_ppu* ppu, uint8_t pixel_index, int pale
     return ppu->obj_palette.colors[pal_index];
 }
 
-bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
+bool fgb_ppu_tick(fgb_ppu* ppu) {
     if (!ppu->cpu) {
         log_error("PPU: CPU not set");
         return false;
     }
 
-    ppu->mode_cycles += cycles;
-    ppu->frame_cycles += cycles;
-    ppu->dma_cycles += cycles;
+    if (!ppu->lcd_control.lcd_ppu_enable) {
+        // LCD and PPU are disabled
+        if (!ppu->reset) {
+            ppu->stat.mode = PPU_MODE_HBLANK;
+            ppu->ly = 0;
+            ppu->mode_cycles = 0;
+            ppu->frame_cycles = 0;
+            ppu->reset = true;
 
-    if (ppu->dma_active && ppu->dma_cycles >= 4) {
+            fgb_ppu_lock_buffer(ppu);
+            memset(ppu->framebuffers, 0xFF, sizeof(ppu->framebuffers));
+            fgb_ppu_unlock_buffer(ppu);
+
+            fgb_ppu_swap_buffers(ppu);
+        }
+
+        return false;
+    } else if (ppu->lcd_control.lcd_ppu_enable && ppu->reset) {
+        // LCD/PPU just got enabled, reset state
+        ppu->stat.mode = PPU_MODE_OAM_SCAN;
+        ppu->mode_cycles = 4; // After turning on LCD, OAM Scan is 4 cycles shorter
+        ppu->frame_cycles = 0;
+        ppu->framebuffer_x = 0;
+        ppu->processed_pixels = 0;
+        ppu->fetch_x = 0;
+        ppu->is_first_fetch = true;
+        fgb_queue_clear(&ppu->bg_wnd_fifo);
+        fgb_queue_clear(&ppu->sprite_fifo);
+        ppu->reset = false;
+    }
+
+    ppu->mode_cycles++;
+    ppu->frame_cycles++;
+    ppu->dma_cycles++;
+    ppu->scanline_cycles++;
+
+    if (ppu->dma_active && ppu->dma_cycles > 4) {
+        ppu->oam_blocked = true;
+
         const int bytes_to_transfer = min(ppu->dma_cycles / 4, PPU_DMA_BYTES - ppu->dma_bytes);
         ppu->dma_cycles -= bytes_to_transfer * 4;
 
@@ -167,6 +294,10 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
         }
     }
 
+    if (!ppu->dma_active && ppu->oam_blocked && ppu->dma_cycles > 4) {
+        ppu->oam_blocked = false;
+    }
+
     switch (ppu->stat.mode) {
     case PPU_MODE_OAM_SCAN:
         fgb_ppu_do_oam_scan(ppu);
@@ -175,54 +306,68 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
             ppu->oam_scan_done = false; // Set this for the next scanline
             ppu->stat.mode = PPU_MODE_DRAW;
             ppu->pixels_drawn = 0; // Reset pixel count for the new scanline
+            ppu->sprite_index = 0; // Reset sprite index for fetching
 
-            if (ppu->mode_cycles > 0) {
-                // Immediately render pixels if there are leftover cycles
-                fgb_ppu_render_pixels(ppu, ppu->mode_cycles);
+            if (ppu->ly == ppu->window_pos.y) {
+                ppu->reached_window_y = true;
             }
         }
         break;
 
     case PPU_MODE_DRAW:
-        // We draw `cycles` pixels for each call to fgb_ppu_tick
-        fgb_ppu_render_pixels(ppu, cycles);
+		fgb_ppu_pixel_fetcher_tick(ppu); // Fetch pixels into the FIFOs
+		fgb_ppu_lcd_push(ppu); // Try to push pixels to the framebuffer
 
-        if (ppu->mode_cycles >= SCANLINE_CYCLES) {
-            ppu->mode_cycles -= SCANLINE_CYCLES;
-            ppu->ly++;
+        if (ppu->framebuffer_x >= SCREEN_WIDTH) {
+			// Reset Fetcher and FIFO state for the next line
+            ppu->framebuffer_x = 0;
+            ppu->fetch_x = 0;
+			ppu->is_first_fetch = true;
+            ppu->processed_pixels = 0;
+			ppu->bg_wnd_fetch_step = FETCH_STEP_TILE_0;
+            ppu->sprite_fetch_active = false;
+			fgb_queue_clear(&ppu->bg_wnd_fifo);
 
-            if (ppu->lyc == ppu->ly) {
-                ppu->stat.lyc_eq_ly = 1;
-                if (ppu->stat.lyc_int) {
-                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
-                }
-            } else {
-                ppu->stat.lyc_eq_ly = 0;
+            // Increment window line counter every time a scanline
+            // has any window pixels drawn
+            if (ppu->reached_window_x) {
+                ppu->window_line_counter++;
             }
+
+			// Transition to HBlank
+            ppu->hblank_cycles = HBLANK_MAX_CYCLES - ppu->mode_cycles;
+			ppu->mode_cycles = 0;
 
             ppu->stat.mode = PPU_MODE_HBLANK;
-            if (ppu->stat.hblank_int) {
-                fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
-            }
         }
         break;
 
     case PPU_MODE_HBLANK:
-        if (ppu->mode_cycles >= HBLANK_CYCLES) {
-            ppu->mode_cycles -= HBLANK_CYCLES;
+        if (ppu->mode_cycles >= ppu->hblank_cycles) {
+            if (ppu->scanline_cycles != SCANLINE_CYCLES) {
+                log_warn("Scanline took %d cycles instead of 456", ppu->scanline_cycles);
+            }
+
+			ppu->mode_cycles = 0;
+            ppu->scanline_cycles = 0;
+
+            ppu->ly++;
+
+            ppu->reached_window_x = false;
+
+            // Clear sprites for next scanline
+            memset(ppu->line_sprites, 0xFF, sizeof(ppu->line_sprites));
 
             if (ppu->ly == 144) {
                 ppu->stat.mode = PPU_MODE_VBLANK;
                 fgb_cpu_request_interrupt(ppu->cpu, IRQ_VBLANK);
+                fgb_ppu_swap_buffers(ppu);
 
-                if (ppu->stat.vblank_int) {
-                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
-                }
+                ppu->reached_window_x = false;
+                ppu->reached_window_y = false;
+                ppu->window_line_counter = 0;
             } else {
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
-                if (ppu->stat.oam_int) {
-                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
-                }
             }
         }
         break;
@@ -230,26 +375,14 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
     case PPU_MODE_VBLANK:
         if (ppu->mode_cycles >= VBLANK_CYCLES) {
             ppu->mode_cycles -= VBLANK_CYCLES;
+            ppu->scanline_cycles = 0;
             ppu->ly++;
+
             if (ppu->ly >= 154) {
                 ppu->ly = 0;
                 ppu->stat.mode = PPU_MODE_OAM_SCAN;
                 ppu->frame_cycles = 0; // Reset frame cycles
                 ppu->frames_rendered++;
-
-                fgb_ppu_lock_buffer(ppu);
-
-                // Switch to the next framebuffer at the end of VBLANK
-                ppu->back_buffer = (ppu->back_buffer + 1) % PPU_FRAMEBUFFER_COUNT;
-
-                fgb_ppu_unlock_buffer(ppu);
-
-                // Clear the line sprites for the next frame
-                memset(ppu->line_sprites, 0xFF, sizeof(ppu->line_sprites));
-
-                if (ppu->stat.oam_int) {
-                    fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
-                }
 
                 return true;
             }
@@ -257,9 +390,11 @@ bool fgb_ppu_tick(fgb_ppu* ppu, uint32_t cycles) {
         break;
     default:
         log_error("PPU: Unknown mode %d", ppu->stat.mode);
-        ppu->stat.mode = PPU_MODE_OAM_SCAN; // Reset to a known state
+        ppu->stat.mode = PPU_MODE_OAM_SCAN;
         break;
     }
+
+    fgb_ppu_try_stat_irq(ppu);
 
     return false;
 }
@@ -290,19 +425,12 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
         break;
 
     case 0xFF46:
-		ppu->dma = value;
-
-        if (ppu->dma_active) {
-            log_warn("PPU: DMA transfer already active, ignoring new request");
-            return;
-        }
-
+        ppu->dma = value;
+        ppu->oam_blocked = ppu->dma_active; // OAM is blocked if a DMA is already active
         ppu->dma_active = true;
         ppu->dma_addr = (uint16_t)value << 8;
         ppu->dma_cycles = 0;
         ppu->dma_bytes = 0;
-
-        log_trace("PPU: Starting DMA transfer during mode %d", ppu->stat.mode);
         break;
 
     case 0xFF47:
@@ -337,7 +465,9 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
         return ppu->lcd_control.value;
 
     case 0xFF41:
-        return ppu->stat.value;
+		return ppu->stat.value
+            | 0x80 // Unused bit 7 is always 1
+            | ((ppu->lyc == ppu->ly) << 2); // Bit 2: LYC == LY
 
     case 0xFF42:
         return ppu->scroll.y;
@@ -352,7 +482,7 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
         return ppu->lyc;
 
     case 0xFF46:
-		return ppu->dma;
+        return ppu->dma;
 
     case 0xFF47:
         return ppu->bgp.value;
@@ -374,166 +504,62 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
         break;
     }
 
-    return 0xAA;
+    return 0xFF;
 }
 
-// TODO: Add checks for if the memory is even accessible
 void fgb_ppu_write_vram(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
-    //if (ppu->stat.mode == PPU_MODE_DRAW) {
-    //    log_trace("PPU: Attempt to write to VRAM during MODE_DRAW");
-    //    return;
-    //}
+    if (ppu->stat.mode == PPU_MODE_DRAW) {
+       return;
+    }
 
     ppu->vram[addr] = value;
 }
 
 uint8_t fgb_ppu_read_vram(const fgb_ppu* ppu, uint16_t addr) {
-    //if (ppu->stat.mode == PPU_MODE_DRAW) {
-    //    log_warn("PPU: Attempt to read from VRAM during MODE_DRAW");
-    //    return 0xFF;
-    //}
+    if (ppu->stat.mode == PPU_MODE_DRAW) {
+       return 0xFF;
+    }
 
     return ppu->vram[addr];
 }
 
 void fgb_ppu_write_oam(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
-    //if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
-    //    log_warn("PPU: Attempt to write to OAM during OAM scan");
-    //    return;
-    //}
+    if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
+       return;
+    }
+
+    if (ppu->oam_blocked) {
+        return;
+    }
 
     ppu->oam[addr] = value;
 }
 
 uint8_t fgb_ppu_read_oam(const fgb_ppu* ppu, uint16_t addr) {
-    //if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
-    //    log_warn("PPU: Attempt to read from OAM during OAM scan");
-    //    return 0xFF;
-    //}
+    if (ppu->stat.mode == PPU_MODE_OAM_SCAN || ppu->stat.mode == PPU_MODE_DRAW) {
+       return 0xFF;
+    }
+
+    if (ppu->oam_blocked) {
+        return 0xFF;
+    }
 
     return ppu->oam[addr];
 }
 
-static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count) {
-    // Make sure we don't draw more pixels than the screen width
-    count = min(count, SCREEN_WIDTH - ppu->pixels_drawn);
+static int fgb_ppu_compare_sprites(const void* a, const void* b, void* ctx) {
+    const fgb_ppu* ppu = ctx;
 
-    uint32_t* framebuffer = ppu->framebuffers[ppu->back_buffer];
+    const int idx_a = (int)(*(const uint8_t*)a);
+    const int idx_b = (int)(*(const uint8_t*)b);
+    const fgb_sprite* sprite_a = (const fgb_sprite*)&ppu->oam[idx_a];
+    const fgb_sprite* sprite_b = (const fgb_sprite*)&ppu->oam[idx_b];
 
-    const int scx = ppu->scroll.x;
-    const int scy = ppu->scroll.y;
-
-	const int wx = ppu->window_pos.x >= 7 ? ppu->window_pos.x - 7 : 0;
-	const int wy = ppu->window_pos.y;
-
-    for (int i = 0; i < count; i++) {
-        const int sx = ppu->pixels_drawn + i;
-        const int sy = ppu->ly;
-        if (sx >= SCREEN_WIDTH || sy >= SCREEN_HEIGHT) {
-            break; // Prevent drawing outside the screen
-        }
-
-        const int bx = (sx + scx) & 0xFF;
-		const int by = (sy + scy) & 0xFF;
-
-		const int tile_x = (bx / TILE_WIDTH) % TILE_MAP_WIDTH;
-		const int tile_y = (by / TILE_HEIGHT) % TILE_MAP_HEIGHT;
-
-        // Check if there is a sprite at this position
-        fgb_sprite* sprite = NULL;
-        uint8_t sprite_pixel = 0;
-        uint8_t sprite_index = 0xFF;
-        if (ppu->lcd_control.obj_enable) {
-            for (int j = 0; j < ppu->sprite_count; j++) {
-                fgb_sprite* s = (fgb_sprite*)&ppu->oam[ppu->sprite_buffer[j]];
-                const int sprite_window_x = s->x - 8; // Adjust for sprite X position
-                const int sprite_window_y = s->y - 16;
-                if (sx >= sprite_window_x && sx < sprite_window_x + PPU_SPRITE_W) { // Check if the pixel is within the sprite's X bounds
-                    sprite = s;
-                    sprite_index = ppu->sprite_buffer[j];
-
-                    // If obj_size == 1 (8x16 sprites), the lsb of the tile ID is ignored
-                    const int tile_id = ppu->lcd_control.obj_size ? s->tile & 0xFE : s->tile;
-                    const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, tile_id, true);
-                    if (!tile) {
-                        log_error("PPU: Failed to get sprite tile data for tile ID %d", tile_id);
-                        continue;
-                    }
-
-                    const uint8_t pixel_x = (sx - sprite_window_x) % TILE_WIDTH;
-                    const uint8_t pixel_y = (sy - sprite_window_y) % TILE_HEIGHT;
-                    sprite_pixel = fgb_tile_get_pixel(tile, pixel_x, pixel_y);
-                    break;
-                }
-            }
-        }
-
-        // Get the background tile data
-        const int tile_id = fgb_ppu_get_tile_id(ppu, ppu->lcd_control.bg_tile_map, tile_x, tile_y);
-        const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, tile_id, false);
-        if (!tile) {
-            log_error("PPU: Failed to get tile data for (%d, %d)", tile_x, tile_y);
-            continue;
-        }
-
-        // Get the pixel from the tile
-		const uint8_t pixel_x = bx % TILE_WIDTH;
-		const uint8_t pixel_y = by % TILE_HEIGHT;
-        uint8_t bg_pixel = fgb_tile_get_pixel(tile, pixel_x, pixel_y);
-        const int screen_index = sy * SCREEN_WIDTH + sx;
-
-        if (ppu->lcd_control.wnd_enable && sx >= wx && sy >= wy) {
-			const int rel_window_x = sx - wx;
-			const int rel_window_y = sy - wy;
-            const uint8_t window_x = rel_window_x % TILE_WIDTH;
-            const uint8_t window_y = rel_window_y % TILE_HEIGHT;
-            const int window_tile_x = (rel_window_x / TILE_WIDTH) % TILE_MAP_WIDTH;
-            const int window_tile_y = (rel_window_y / TILE_HEIGHT) % TILE_MAP_HEIGHT;
-
-            const int window_tile_id = fgb_ppu_get_tile_id(ppu, ppu->lcd_control.wnd_tile_map, window_tile_x, window_tile_y);
-            const fgb_tile* window_tile = fgb_ppu_get_tile_data(ppu, window_tile_id, false);
-            if (window_tile) {
-                bg_pixel = fgb_tile_get_pixel(window_tile, window_x, window_y);
-            } else {
-                log_error("PPU: Failed to get window tile data for tile ID %d", window_tile_id);
-			}
-        }
-
-        if (!sprite || ppu->debug.hide_sprites) {
-            if (ppu->debug.hide_bg) {
-                framebuffer[screen_index] = 0x00000000; // Black
-            } else if (!ppu->lcd_control.bg_wnd_enable) {
-				framebuffer[screen_index] = 0xFFFFFFFF; // White
-            } else {
-                // No sprite at this position, just draw the background pixel
-                framebuffer[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);
-            }
-
-            continue;
-        }
-
-        // Sprite color 0 is transparent
-        // Sprite priority 1 means it is behind bg colors 1, 2 and 3
-        if (sprite_pixel == 0 || (sprite->priority == 1 && bg_pixel != 0)) {
-            framebuffer[screen_index] = fgb_ppu_get_bg_color(ppu, bg_pixel);
-            continue;
-        }
-
-        for (int i = 0; i < PPU_SCANLINE_SPRITES; i++) {
-            if (ppu->line_sprites[ppu->ly][i] == sprite_index) {
-                break;
-            }
-            if (ppu->line_sprites[ppu->ly][i] == 0xFF) {
-                // Found an empty slot, store the sprite index
-                ppu->line_sprites[ppu->ly][i] = sprite_index;
-                break;
-            }
-        }
-        
-        framebuffer[screen_index] = fgb_ppu_get_obj_color(ppu, sprite_pixel, sprite->palette);
+    if (sprite_a->x == sprite_b->x) {
+        return idx_a - idx_b; // Lower OAM index has priority
     }
 
-    ppu->pixels_drawn += count;
+    return (int)sprite_a->x - (int)sprite_b->x; // Lower X coordinate has priority
 }
 
 void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
@@ -561,5 +587,271 @@ void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
         }
     }
 
+    // Sort sprites by X coordinate (and OAM index for ties)
+    sort_r(ppu->sprite_buffer, ppu->sprite_count, sizeof(uint8_t), fgb_ppu_compare_sprites, ppu);
+
     ppu->oam_scan_done = true;
+}
+
+void fgb_ppu_pixel_fetcher_tick(fgb_ppu* ppu) {
+    if (ppu->sprite_index < ppu->sprite_count && ppu->lcd_control.obj_enable && !ppu->sprite_fetch_active) {
+        const fgb_sprite* next_sprite = (const fgb_sprite*)&ppu->oam[ppu->sprite_buffer[ppu->sprite_index]];
+        if (next_sprite->x <= (ppu->framebuffer_x + 8)) {
+            ppu->current_sprite = next_sprite;
+            ppu->sprite_fetch_active = true;
+            ppu->sprite_index++;
+            ppu->sprite_fetch_step = FETCH_STEP_TILE_0;
+
+            // When sprite fetch starts, BG/Wnd fetch is paused and reset
+            ppu->bg_wnd_fetch_step = FETCH_STEP_TILE_0;
+        }
+    }
+
+    if (ppu->sprite_fetch_active) {
+        switch (ppu->sprite_fetch_step++) {
+        case FETCH_STEP_TILE_0:
+        case FETCH_STEP_TILE_1:
+            break;
+        case FETCH_STEP_DATA_LOW_0: {
+            // Handle 8x8 and 8x16 sprites. For 8x16 the tile id's LSB is ignored
+            // and the sprite may span two tiles vertically
+            const int tile_id_base = ppu->current_sprite->tile & (ppu->lcd_control.obj_size ? 0xFE : 0xFF);
+            const int sprite_height = ppu->lcd_control.obj_size ? PPU_SPRITE_H16 : PPU_SPRITE_H;
+            int line = (ppu->ly + 16) - ppu->current_sprite->y; // line within sprite
+
+            if (ppu->current_sprite->y_flip) {
+                line = sprite_height - 1 - line;
+            }
+            line = max(line, 0);
+
+            const int tile_index = tile_id_base + (line >= 8 ? 1 : 0);
+            const int tile_row = 2 * (line % 8);
+            const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, tile_index, true);
+            ppu->sprite_tile_lo = tile->data[tile_row];
+        } break;
+        case FETCH_STEP_DATA_LOW_1:
+            break;
+        case FETCH_STEP_DATA_HIGH_0: {
+            const int tile_id_base = ppu->current_sprite->tile & (ppu->lcd_control.obj_size ? 0xFE : 0xFF);
+            const int sprite_height = ppu->lcd_control.obj_size ? 16 : 8;
+            int line = (ppu->ly + 16) - ppu->current_sprite->y; // line within sprite 0..height-1
+
+            if (ppu->current_sprite->y_flip) {
+                line = sprite_height - 1 - line;
+            }
+            line = max(line, 0);
+
+            const int tile_index = tile_id_base + (line >= 8 ? 1 : 0);
+            const int tile_row = 2 * (line % 8);
+            const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, tile_index, true);
+            ppu->sprite_tile_hi = tile->data[tile_row + 1];
+        } break;
+        case FETCH_STEP_DATA_HIGH_1:
+            break;
+        case FETCH_STEP_PUSH_0: {
+            // Push the 8 sprite pixels into the sprite FIFO aligned to the
+            // current framebuffer_x. Each sprite pixel's screen X is
+            // (sprite.x - 8) + sx. We compute its position relative to the
+            // FIFO front (framebuffer_x) and either overwrite a transparent
+            // slot or push blank pixels until the target index is reached.
+            for (int sx = 0; sx < PPU_SPRITE_W; sx++) {
+                const int bit = ppu->current_sprite->x_flip ? (PPU_SPRITE_W - sx - 1) : sx;
+                const uint8_t color = TILE_PIXEL(ppu->sprite_tile_lo, ppu->sprite_tile_hi, bit);
+
+                // Absolute screen X for this sprite pixel
+                const int screen_x = ppu->current_sprite->x - 8 + sx;
+                // Index relative to framebuffer_x
+                const int rel = screen_x - ppu->framebuffer_x;
+
+                if (rel < 0) {
+                    continue; // pixel already past
+                } else if (rel >= PPU_PIXEL_FIFO_SIZE) {
+                    break; // too far to fit in FIFO 
+                }
+
+                const fgb_pixel pixel = {
+                    .color = color,
+                    .palette = ppu->current_sprite->palette,
+                    .sprite_prio = 0,
+                    .bg_prio = ppu->current_sprite->priority,
+                    .is_wnd = false,
+                };
+
+                // If the FIFO already contains an entry at `rel`, only
+                // overwrite it if it's transparent (color == 0). Otherwise
+                // push blanks until we reach `rel` and then push the pixel.
+                if (rel < ppu->sprite_fifo.count) {
+                    fgb_pixel* existing = fgb_queue_at(&ppu->sprite_fifo, rel);
+                    if (existing && existing->color == 0) {
+                        *existing = pixel;
+                    }
+                } else {
+                    while (ppu->sprite_fifo.count < rel) {
+                        fgb_queue_push(&ppu->sprite_fifo, (fgb_pixel){ 0, 0, 0, 0, false });
+                    }
+                    fgb_queue_push(&ppu->sprite_fifo, pixel);
+                }
+            }
+
+            ppu->sprite_fetch_active = false;
+        } break;
+        case FETCH_STEP_PUSH_1:
+            break;
+        }
+    }
+
+    if (!ppu->sprite_fetch_active) {
+        switch (ppu->bg_wnd_fetch_step++) {
+        case FETCH_STEP_TILE_0: {
+            ppu->fetch_tile_id = fgb_ppu_get_tile_id(ppu);
+			ppu->is_window_tile = ppu->reached_window_x;
+        } break;
+        case FETCH_STEP_TILE_1:
+            break;
+        case FETCH_STEP_DATA_LOW_0: {
+            const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->fetch_tile_id, false);
+            const int tile_y = fgb_ppu_get_current_tile_y(ppu);
+            ppu->bg_wnd_tile_lo = tile->data[tile_y];
+        } break;
+        case FETCH_STEP_DATA_LOW_1:
+            break;
+        case FETCH_STEP_DATA_HIGH_0: {
+            const fgb_tile* tile = fgb_ppu_get_tile_data(ppu, ppu->fetch_tile_id, false);
+            const int tile_y = fgb_ppu_get_current_tile_y(ppu);
+            ppu->bg_wnd_tile_hi = tile->data[tile_y + 1];
+        } break;
+        case FETCH_STEP_DATA_HIGH_1:
+            if (ppu->is_first_fetch) {
+                // The first time on each scanline the first 3 steps are repeated
+                ppu->bg_wnd_fetch_step = FETCH_STEP_TILE_0;
+                ppu->is_first_fetch = false;
+            }
+            break;
+        case FETCH_STEP_PUSH_0: {
+            if (!fgb_queue_empty(&ppu->bg_wnd_fifo)) {
+                ppu->bg_wnd_fetch_step = FETCH_STEP_PUSH_1; // Wait until there is space in the FIFO
+                break;
+            }
+
+            for (int x = 0; x < 8; x++) {
+                const uint8_t pixel_index = TILE_PIXEL(ppu->bg_wnd_tile_lo, ppu->bg_wnd_tile_hi, x);
+                const fgb_pixel pixel = { pixel_index, 0, 0, 0, ppu->is_window_tile };
+                fgb_queue_push(&ppu->bg_wnd_fifo, pixel);
+            }
+
+            ppu->fetch_x++;
+        } break;
+        case FETCH_STEP_PUSH_1:
+            ppu->bg_wnd_fetch_step = FETCH_STEP_TILE_0;
+            break;
+        }
+    }
+}
+
+void fgb_ppu_lcd_push(fgb_ppu* ppu) {
+    // No pixels are pushed to the LCD if the BG/Wnd FIFO is empty or if a sprite fetch is active
+    if (fgb_queue_empty(&ppu->bg_wnd_fifo) || ppu->sprite_fetch_active) {
+        return;
+	}
+
+    if (++ppu->processed_pixels < (ppu->scroll.x % 8)) {
+        // Skip pixels until we reach the scroll offset
+        fgb_queue_pop(&ppu->bg_wnd_fifo);
+        return;
+    }
+
+	uint32_t* framebuffer = ppu->framebuffers[ppu->back_buffer];
+    const fgb_pixel bg_pixel = fgb_queue_pop(&ppu->bg_wnd_fifo);
+    const fgb_pixel sprite_pixel = fgb_queue_empty(&ppu->sprite_fifo)
+        ? (fgb_pixel){ 0, 0, 0, 0 }
+        : fgb_queue_pop(&ppu->sprite_fifo);
+    
+    uint32_t color = 0;
+    if (sprite_pixel.color == 0) {
+        // No sprite pixel, draw background pixel
+        color = fgb_ppu_get_bg_color(ppu, bg_pixel);
+    } else if (sprite_pixel.bg_prio == 1 && bg_pixel.color != 0) {
+        // Sprite is behind background and background pixel is not color 0
+        color = fgb_ppu_get_bg_color(ppu, bg_pixel);
+    } else {
+        // Draw sprite pixel
+        color = fgb_ppu_get_obj_color(ppu, sprite_pixel.color, sprite_pixel.palette);
+    }
+
+	framebuffer[ppu->ly * SCREEN_WIDTH + ppu->framebuffer_x] = color;
+	ppu->framebuffer_x++;
+
+    if (ppu->reached_window_x) {
+        return;
+    }
+
+    const int window_pos = (int)ppu->window_pos.x - 7;
+    if (ppu->lcd_control.wnd_enable && ppu->reached_window_y && ppu->framebuffer_x >= window_pos) {
+        ppu->reached_window_x = true;
+        //ppu->window_line_counter = 0;
+        ppu->bg_wnd_fetch_step = FETCH_STEP_TILE_0;
+        ppu->fetch_x = 0;
+        fgb_queue_clear(&ppu->bg_wnd_fifo);
+    }
+}
+
+void fgb_ppu_try_stat_irq(fgb_ppu* ppu) {
+    const bool stat = (ppu->ly == ppu->lyc && ppu->stat.lyc_int) ||
+        (ppu->stat.mode == PPU_MODE_HBLANK && ppu->stat.hblank_int) ||
+        (ppu->stat.mode == PPU_MODE_OAM_SCAN && ppu->stat.oam_int) ||
+        (ppu->stat.mode == PPU_MODE_VBLANK && (ppu->stat.vblank_int || ppu->stat.oam_int));
+
+    if (!ppu->last_stat && stat) {
+        fgb_cpu_request_interrupt(ppu->cpu, IRQ_LCD);
+    }
+
+    ppu->last_stat = stat;
+}
+
+void fgb_queue_push(fgb_queue* queue, fgb_pixel pixel) {
+    if (fgb_queue_full(queue)) {
+        log_warn("PPU Pixel Queue Overflow");
+        return;
+	}
+
+    queue->pixels[queue->push_index] = pixel;
+	queue->push_index = (queue->push_index + 1) % PPU_PIXEL_FIFO_SIZE;
+    queue->count++;
+}
+
+fgb_pixel fgb_queue_pop(fgb_queue* queue) {
+    if (fgb_queue_empty(queue)) {
+        log_warn("PPU Pixel Queue Underflow");
+        return (fgb_pixel) { 0, 0, 0, 0 };
+    }
+
+    const fgb_pixel pixel = queue->pixels[queue->pop_index];
+    queue->pop_index = (queue->pop_index + 1) % PPU_PIXEL_FIFO_SIZE;
+	queue->count--;
+
+	return pixel;
+}
+
+fgb_pixel* fgb_queue_at(fgb_queue* queue, int index) {
+    if (index < 0 || index >= PPU_PIXEL_FIFO_SIZE) {
+        log_warn("PPU Pixel Queue Index Out of Bounds");
+        return NULL;
+    }
+
+    const int real_index = (queue->pop_index + index) % PPU_PIXEL_FIFO_SIZE;
+    return &queue->pixels[real_index];
+}
+
+bool fgb_queue_full(const fgb_queue* queue) {
+	return queue->count >= PPU_PIXEL_FIFO_SIZE;
+}
+
+bool fgb_queue_empty(const fgb_queue* queue) {
+	return queue->count == 0;
+}
+
+void fgb_queue_clear(fgb_queue* queue) {
+    queue->push_index = 0;
+	queue->pop_index = 0;
+	queue->count = 0;
 }

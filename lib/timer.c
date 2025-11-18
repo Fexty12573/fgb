@@ -48,7 +48,7 @@ void fgb_timer_tick(fgb_timer* timer) {
         } else if (timer->ticks_since_overflow == 6) {
             timer->overflow = false;
             timer->ticks_since_overflow = 0;
-		}
+        }
     }
 }
 
@@ -56,60 +56,60 @@ void fgb_timer_reset(fgb_timer* timer) {
     timer->divider = 0xAB00;
     timer->counter = 0;
     timer->modulo = 0;
-	timer->control = 0;
+    timer->control = 0xF8;
 }
 
 void fgb_timer_write(fgb_timer* timer, uint16_t addr, uint8_t value) {
-	const uint16_t div_bit = div_bit_table[timer->clk_sel];
+    const uint16_t div_bit = div_bit_table[timer->clk_sel];
 
     switch (addr) {
     case TIMER_DIV_ADDRESS:
         // If the watched bit is set in the divider it will be cleared,
-		// causing a timer increment
+        // causing a timer increment
         if (timer->enable && (timer->divider & div_bit)) {
             fgb_timer_increment(timer);
-		}
+        }
 
         timer->divider = 0;
         break;
 
     case TIMER_TIMA_ADDRESS:
-		// Tick 5 is when TIMA is reloaded with TMA, so ignore writes to TIMA then
+        // Tick 5 is when TIMA is reloaded with TMA, so ignore writes to TIMA then
         if (timer->ticks_since_overflow != 5) {
-			timer->counter = value;
+            timer->counter = value;
             timer->overflow = false;
-			timer->ticks_since_overflow = 0;
+            timer->ticks_since_overflow = 0;
         }
         break;
 
     case TIMER_TMA_ADDRESS:
         timer->modulo = value;
 
-		// Tick 5 is when TIMA is reloaded with TMA so we write TMA directly to TIMA.
+        // Tick 5 is when TIMA is reloaded with TMA so we write TMA directly to TIMA.
         if (timer->ticks_since_overflow == 5) {
             timer->counter = value;
         }
         break;
 
     case TIMER_TAC_ADDRESS: {
-		const bool high = (timer->divider & div_bit) != 0;
-		const bool prev_enable = timer->enable;
+        const bool high = (timer->divider & div_bit) != 0;
+        const bool prev_enable = timer->enable;
 
         timer->control = value;
 
-		// If the timer was previously disabled, no edge can occur
+        // If the timer was previously disabled, no edge can occur
         if (!prev_enable) {
             break;
         }
 
-		// If the previous watched bit is set and either
+        // If the previous watched bit is set and either
         // a) the timer is being disabled or
-		// b) the clock select is changing such that the watched bit is now cleared,
-		// then a falling edge occurs and the timer is incremented
+        // b) the clock select is changing such that the watched bit is now cleared,
+        // then a falling edge occurs and the timer is incremented
         if (high) {
             if (!timer->enable || (timer->divider & div_bit_table[timer->clk_sel]) == 0) {
                 fgb_timer_increment(timer);
-			}
+            }
         }
     } break;
 
@@ -135,7 +135,7 @@ uint8_t fgb_timer_read(const fgb_timer* timer, uint16_t addr) {
 
     default:
         log_warn("Unknown address for timer read: 0x%04X", addr);
-        return 0xAA; // Return a default value for unknown addresses
+        return 0xFF; // Return a default value for unknown addresses
     }
 }
 

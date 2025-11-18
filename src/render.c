@@ -60,11 +60,19 @@ uint32_t fgb_create_screen_texture(void) {
 void fgb_upload_screen_texture(uint32_t texture_id, fgb_ppu* ppu) {
     gl_call(glBindTexture(GL_TEXTURE_2D, texture_id));
 
-    // ppu->screen is already in RGBA format, so we can upload it directly
     fgb_ppu_lock_buffer(ppu);
     const uint32_t* framebuffer = fgb_ppu_get_front_buffer(ppu);
     gl_call(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, framebuffer));
     fgb_ppu_unlock_buffer(ppu);
+}
+
+void fgb_upload_back_buffer_texture(uint32_t texture_id, fgb_ppu* ppu) {
+    gl_call(glBindTexture(GL_TEXTURE_2D, texture_id));
+
+    fgb_ppu_lock_buffer(ppu);
+    const uint32_t* framebuffer = fgb_ppu_get_back_buffer(ppu);
+    gl_call(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, framebuffer));
+	fgb_ppu_unlock_buffer(ppu);
 }
 
 uint32_t fgb_create_tile_block_texture(int tiles_per_row) {
@@ -168,7 +176,9 @@ void fgb_upload_oam_textures(const uint32_t* textures, int count, const fgb_ppu*
 
         for (int y = 0; y < PPU_SPRITE_H; y++) {
             for (int x = 0; x < PPU_SPRITE_W; x++) {
-                const uint8_t pixel_index = fgb_tile_get_pixel(tile, x, y);
+                const int real_x = sprite->x_flip ? (PPU_SPRITE_W - 1 - x) : x;
+                const int real_y = sprite->y_flip ? (PPU_SPRITE_H - 1 - y) : y;
+                const uint8_t pixel_index = fgb_tile_get_pixel(tile, real_x, real_y);
                 const int tex_x = sprite_x + x;
                 const int tex_y = sprite_y + y;
                 const int tex_index = (tex_y * texture_width) + tex_x;

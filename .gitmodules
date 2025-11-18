@@ -7,3 +7,6 @@
 [submodule "external/cimgui"]
 	path = external/cimgui
 	url = https://github.com/cimgui/cimgui
+[submodule "external/sort_r"]
+	path = external/sort_r
+	url = https://github.com/noporpoise/sort_r

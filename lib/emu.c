@@ -52,7 +52,7 @@ void fgb_emu_reset(fgb_emu* emu) {
         return;
     }
 
-	fgb_cpu_reset(emu->cpu);
+    fgb_cpu_reset(emu->cpu);
     fgb_ppu_reset(emu->ppu);
 }
 

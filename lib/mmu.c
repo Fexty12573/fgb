@@ -51,10 +51,13 @@ void fgb_mmu_init(fgb_mmu* mmu, fgb_cart* cart, fgb_cpu* cpu, const fgb_mmu_ops*
         mmu->read_u8 = fgb_mmu_read;
         mmu->read_u16 = fgb_mmu_read_u16;
     }
+
+    mmu->reset(mmu);
 }
 
 void fgb_mmu_reset(fgb_mmu* mmu) {
-    
+	memset(mmu->wram, 0, sizeof(mmu->wram));
+	memset(mmu->hram, 0, sizeof(mmu->hram));
 }
 
 static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
@@ -178,7 +181,7 @@ static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
     }
 
     log_error("Unmapped memory read from 0x%04X", addr);
-    return 0xAA; // Return a default value for unmapped reads
+    return 0xFF; // Return a default value for unmapped reads
 }
 
 static uint16_t fgb_mmu_read_u16(const fgb_mmu* mmu, uint16_t addr) {

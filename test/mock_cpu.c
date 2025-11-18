@@ -2,6 +2,7 @@
 
 #include <tester.h>
 #include <fgb/cpu.h>
+#include <fgb/ppu.h>
 
 static fgb_cpu* cpu;
 static int mem_access_count;
@@ -33,7 +34,8 @@ static void mock_cpu_init(size_t tester_ins_mem_size, uint8_t* tester_ins_mem) {
         .data_size = tester_ins_mem_size
     };
 
-    cpu = fgb_cpu_create_with(NULL, &ops);
+    cpu = fgb_cpu_create_with(NULL, fgb_ppu_create(), &ops);
+    cpu->force_disable_interrupts = true;
     mem_access_count = 0;
 }
 
@@ -49,7 +51,7 @@ void mock_cpu_set_state(struct state* state) {
 
     cpu->regs.sp = state->SP;
     cpu->regs.pc = state->PC;
-    cpu->halted = state->halted;
+	cpu->mode = state->halted ? CPU_MODE_HALT : CPU_MODE_NORMAL;
     cpu->ime = state->interrupts_master_enabled;
 
     mem_access_count = state->num_mem_accesses;
@@ -67,7 +69,7 @@ void mock_cpu_get_state(struct state* state) {
 
     state->SP = cpu->regs.sp;
     state->PC = cpu->regs.pc;
-    state->halted = cpu->halted;
+	state->halted = cpu->mode == CPU_MODE_HALT;
     state->interrupts_master_enabled = cpu->ime;
 
     state->num_mem_accesses = mem_access_count;
@@ -75,7 +77,7 @@ void mock_cpu_get_state(struct state* state) {
 }
 
 int mock_cpu_step(void) {
-    return fgb_cpu_execute(cpu);
+    return fgb_cpu_step(cpu);
 }
 
 uint8_t mock_mmu_read(const fgb_mmu* mmu, uint16_t addr) {

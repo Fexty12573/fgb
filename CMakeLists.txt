@@ -15,6 +15,7 @@ add_subdirectory(external/glew/)
 add_subdirectory(external/gbit)
 add_subdirectory(lib)
 add_subdirectory(test)
+add_subdirectory(app)
 
 set(IMGUI_BACKEND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/cimgui/imgui/backends")
 
@@ -38,3 +39,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     libglew_static
     microlog::microlog
 )
+
+if (MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /wd5287)
+endif()
+
+add_dependencies(${PROJECT_NAME} rom)
