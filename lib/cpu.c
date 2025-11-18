@@ -38,11 +38,6 @@ static const struct fgb_init_value fgb_init_table[] = {
     { 0xFF00, 0xCF }, // P1
     { 0xFF01, 0x00 }, // SB
     { 0xFF02, 0x7E }, // SC
-    { 0xFF04, 0xAB }, // DIV
-    { 0xFF05, 0x00 }, // TIMA
-    { 0xFF06, 0x00 }, // TMA
-    { 0xFF07, 0xF8 }, // TAC
-    { 0xFF0F, 0xE1 }, // IF
     { 0xFF10, 0x80 }, // NR10
     { 0xFF11, 0xBF }, // NR11
     { 0xFF12, 0xF3 }, // NR12
@@ -64,19 +59,6 @@ static const struct fgb_init_value fgb_init_table[] = {
     { 0xFF24, 0x77 }, // NR50
     { 0xFF25, 0xF3 }, // NR51
     { 0xFF26, 0xF1 }, // NR52
-    { 0xFF40, 0x91 }, // LCDC
-    { 0xFF41, 0x81 }, // STAT
-    { 0xFF42, 0x00 }, // SCY
-    { 0xFF43, 0x00 }, // SCX
-    { 0xFF44, 0x00 }, // LY
-    { 0xFF45, 0x00 }, // LYC
-    { 0xFF46, 0xFF }, // DMA
-    { 0xFF47, 0xFC }, // BGP
-    { 0xFF48, 0xFF }, // OBP0
-    { 0xFF49, 0xFF }, // OBP1
-    { 0xFF4A, 0x00 }, // WY
-    { 0xFF4B, 0x00 }, // WX
-    { 0xFFFF, 0x00 }, // IE
 };
 
 
@@ -164,6 +146,9 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
     cpu->regs.bc = 0x0013;
     cpu->regs.de = 0x00D8;
     cpu->regs.hl = 0x014D;
+
+    cpu->interrupt.flags = 0xE1;
+    cpu->interrupt.enable = 0x00;
     
     for (size_t i = 0; i < sizeof(fgb_init_table) / sizeof(fgb_init_table[0]); i++) {
         fgb_mmu_write(cpu, fgb_init_table[i].addr, fgb_init_table[i].value);

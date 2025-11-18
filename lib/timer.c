@@ -56,7 +56,7 @@ void fgb_timer_reset(fgb_timer* timer) {
     timer->divider = 0xAB00;
     timer->counter = 0;
     timer->modulo = 0;
-    timer->control = 0;
+    timer->control = 0xF8;
 }
 
 void fgb_timer_write(fgb_timer* timer, uint16_t addr, uint8_t value) {
