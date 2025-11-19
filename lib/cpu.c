@@ -506,29 +506,33 @@ uint16_t fgb_cpu_fetch_u16(fgb_cpu* cpu) {
 }
 
 uint8_t fgb_cpu_read_u8(fgb_cpu *cpu, uint16_t addr) {
-    fgb_cpu_m_tick(cpu);
-    return fgb_mmu_read_u8(cpu, addr);
+    fgb_cpu_tick(cpu);
+    fgb_cpu_tick(cpu);
+    fgb_cpu_tick(cpu);
+    const uint8_t val = fgb_mmu_read_u8(cpu, addr);
+    fgb_cpu_tick(cpu);
+
+    return val;
 }
 
 uint16_t fgb_cpu_read_u16(fgb_cpu *cpu, uint16_t addr) {
-    fgb_cpu_m_tick(cpu);
-    const uint16_t low = fgb_mmu_read_u8(cpu, addr);
-    fgb_cpu_m_tick(cpu);
-    const uint16_t high = fgb_mmu_read_u8(cpu, addr + 1);
+    const uint16_t low = fgb_cpu_read_u8(cpu, addr);
+    const uint16_t high = fgb_cpu_read_u8(cpu, addr + 1);
 
     return (high << 8 | low) & 0xFFFF;
 }
 
 void fgb_cpu_write_u8(fgb_cpu *cpu, uint16_t addr, uint8_t value) {
-    fgb_cpu_m_tick(cpu);
+    fgb_cpu_tick(cpu);
+    fgb_cpu_tick(cpu);
+    fgb_cpu_tick(cpu);
     fgb_mmu_write(cpu, addr, value);
+    fgb_cpu_tick(cpu);
 }
 
 void fgb_cpu_write_u16(fgb_cpu *cpu, uint16_t addr, uint16_t value) {
-    fgb_cpu_m_tick(cpu);
-    fgb_mmu_write(cpu, addr + 0, (value >> 0) & 0xFF);
-    fgb_cpu_m_tick(cpu);
-    fgb_mmu_write(cpu, addr + 1, (value >> 8) & 0xFF);
+    fgb_cpu_write_u8(cpu, addr + 0, (value >> 0) & 0xFF);
+    fgb_cpu_write_u8(cpu, addr + 1, (value >> 8) & 0xFF);
 }
 
 static inline void fgb_call(fgb_cpu* cpu, uint16_t dest);
