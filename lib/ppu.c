@@ -270,6 +270,8 @@ bool fgb_ppu_tick(fgb_ppu* ppu) {
         fgb_queue_clear(&ppu->bg_wnd_fifo);
         fgb_queue_clear(&ppu->sprite_fifo);
         ppu->reset = false;
+
+        return false;
     }
 
     ppu->mode_cycles++;
@@ -581,8 +583,9 @@ void fgb_ppu_do_oam_scan(fgb_ppu* ppu) {
 
     for (int i = 0; i < PPU_OAM_SPRITES; i++) {
         const fgb_sprite* sprite = (const fgb_sprite*)&ppu->oam[i * PPU_SPRITE_SIZE_BYTES];
-        if (sprite->x == 0) continue; // Sprite is not visible
-        if (ppu->ly < sprite->y - 16 || ppu->ly >= sprite->y - 16 + sprite_height) continue; // Sprite is not on this scanline
+        if (ppu->ly < sprite->y - 16 || ppu->ly >= sprite->y - 16 + sprite_height) {
+            continue; // Sprite is not on this scanline
+        }
 
         ppu->sprite_buffer[ppu->sprite_count++] = i * PPU_SPRITE_SIZE_BYTES;
         
