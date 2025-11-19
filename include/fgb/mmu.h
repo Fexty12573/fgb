@@ -36,6 +36,7 @@ typedef struct fgb_mmu {
     uint8_t(*read_u8)(const struct fgb_mmu* mmu, uint16_t addr);
     uint16_t(*read_u16)(const struct fgb_mmu* mmu, uint16_t addr);
     bool use_ext_data;
+    bool bootrom_mapped;
 } fgb_mmu;
 
 typedef struct fgb_mmu_ops {

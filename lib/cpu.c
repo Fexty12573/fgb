@@ -140,7 +140,7 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
     cpu->total_cycles = 0;
     cpu->cycles_this_frame = 0;
 
-    cpu->regs.pc = 0x0100;
+    cpu->regs.pc = 0x0000; // Starting at $0000 to run Bootrom
     cpu->regs.sp = 0xFFFE;
 
     cpu->regs.af = 0x01B0;
