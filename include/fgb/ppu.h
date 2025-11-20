@@ -39,15 +39,15 @@ enum fgb_ppu_mode {
 };
 
 enum fgb_fetch_step {
-	// 2 T-cycles each
-	FETCH_STEP_TILE_0,
-	FETCH_STEP_TILE_1,
+    // 2 T-cycles each
+    FETCH_STEP_TILE_0,
+    FETCH_STEP_TILE_1,
     FETCH_STEP_DATA_LOW_0,
     FETCH_STEP_DATA_LOW_1,
-	FETCH_STEP_DATA_HIGH_0,
-	FETCH_STEP_DATA_HIGH_1,
-	FETCH_STEP_PUSH_0,
-	FETCH_STEP_PUSH_1,
+    FETCH_STEP_DATA_HIGH_0,
+    FETCH_STEP_DATA_HIGH_1,
+    FETCH_STEP_PUSH_0,
+    FETCH_STEP_PUSH_1,
 };
 
 enum fgb_color_mode {
@@ -82,16 +82,16 @@ typedef struct fgb_sprite {
 
 typedef struct fgb_pixel {
     uint8_t color : 2;
-	uint8_t palette : 1;
+    uint8_t palette : 1;
     uint8_t sprite_prio : 1; // Only relevant for CGB sprites
     uint8_t bg_prio : 1; // See fgb_sprite::priority
-	uint8_t is_wnd : 1; // Debug: is this pixel from the window?
+    uint8_t is_wnd : 1; // Debug: is this pixel from the window?
 } fgb_pixel;
 
 typedef struct fgb_queue {
-	fgb_pixel pixels[PPU_PIXEL_FIFO_SIZE];
-	int push_index;
-	int pop_index;
+    fgb_pixel pixels[PPU_PIXEL_FIFO_SIZE];
+    int push_index;
+    int pop_index;
     int count;
 } fgb_queue;
 
@@ -99,7 +99,7 @@ typedef struct fgb_ppu {
     uint8_t vram[PPU_VRAM_SIZE];
     uint8_t oam[PPU_OAM_SIZE];
     uint32_t framebuffers[PPU_FRAMEBUFFER_COUNT][SCREEN_WIDTH * SCREEN_HEIGHT];
-	int framebuffer_x; // Current X position in the framebuffer (actual number of pixels drawn)
+    int framebuffer_x; // Current X position in the framebuffer (actual number of pixels drawn)
     int processed_pixels; // Number of pixels pushed OR discarded from the FIFO
 
     // For keeping track of which sprites were rendered on which scanline
@@ -107,10 +107,10 @@ typedef struct fgb_ppu {
 
     // Pixel FIFO
     fgb_queue bg_wnd_fifo;
-	fgb_queue sprite_fifo;
-	enum fgb_fetch_step bg_wnd_fetch_step;
+    fgb_queue sprite_fifo;
+    enum fgb_fetch_step bg_wnd_fetch_step;
     enum fgb_fetch_step sprite_fetch_step;
-	int fetch_x;
+    int fetch_x;
 
     bool reached_window_x;
     bool reached_window_y;
@@ -118,8 +118,8 @@ typedef struct fgb_ppu {
 
     // Fetcher internal storage
     int fetch_tile_id;
-	uint8_t bg_wnd_tile_lo;
-	uint8_t bg_wnd_tile_hi;
+    uint8_t bg_wnd_tile_lo;
+    uint8_t bg_wnd_tile_hi;
     uint8_t sprite_tile_lo;
     uint8_t sprite_tile_hi;
     bool is_first_fetch;
@@ -133,7 +133,7 @@ typedef struct fgb_ppu {
 
     uint32_t mode_cycles; // Cycles for the current mode
     uint32_t frame_cycles; // Cycles for the current frame
-	uint32_t hblank_cycles; // Cycles spent in HBlank
+    uint32_t hblank_cycles; // Cycles spent in HBlank
     uint32_t scanline_cycles; // Cycles spent in the current scanline
 
     int pixels_drawn; // Number of pixels drawn in the current scanline

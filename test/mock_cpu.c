@@ -51,7 +51,7 @@ void mock_cpu_set_state(struct state* state) {
 
     cpu->regs.sp = state->SP;
     cpu->regs.pc = state->PC;
-	cpu->mode = state->halted ? CPU_MODE_HALT : CPU_MODE_NORMAL;
+    cpu->mode = state->halted ? CPU_MODE_HALT : CPU_MODE_NORMAL;
     cpu->ime = state->interrupts_master_enabled;
 
     mem_access_count = state->num_mem_accesses;
@@ -69,7 +69,7 @@ void mock_cpu_get_state(struct state* state) {
 
     state->SP = cpu->regs.sp;
     state->PC = cpu->regs.pc;
-	state->halted = cpu->mode == CPU_MODE_HALT;
+    state->halted = cpu->mode == CPU_MODE_HALT;
     state->interrupts_master_enabled = cpu->ime;
 
     state->num_mem_accesses = mem_access_count;

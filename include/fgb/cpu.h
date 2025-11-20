@@ -36,15 +36,15 @@ enum fgb_cpu_mode {
 };
 
 enum fgb_cpu_flag {
-	CPU_FLAG_C = 1 << 4,
-	CPU_FLAG_H = 1 << 5,
-	CPU_FLAG_N = 1 << 6,
-	CPU_FLAG_Z = 1 << 7,
+    CPU_FLAG_C = 1 << 4,
+    CPU_FLAG_H = 1 << 5,
+    CPU_FLAG_N = 1 << 6,
+    CPU_FLAG_Z = 1 << 7,
 
-	CPU_FLAG_c = CPU_FLAG_C,
-	CPU_FLAG_h = CPU_FLAG_H,
-	CPU_FLAG_n = CPU_FLAG_N,
-	CPU_FLAG_z = CPU_FLAG_Z,
+    CPU_FLAG_c = CPU_FLAG_C,
+    CPU_FLAG_h = CPU_FLAG_H,
+    CPU_FLAG_n = CPU_FLAG_N,
+    CPU_FLAG_z = CPU_FLAG_Z,
 };
 
 typedef void (*fgb_cpu_bp_callback)(struct fgb_cpu* cpu, size_t bp, uint16_t addr);
@@ -52,13 +52,13 @@ typedef void (*fgb_cpu_step_callback)(struct fgb_cpu* cpu);
 typedef void (*fgb_cpu_trace_callback)(struct fgb_cpu* cpu, uint16_t addr, uint32_t depth, const char* disasm);
 
 typedef struct fgb_cpu_regs {
-	union {
-	    uint16_t af;
-	    struct {
-	        uint8_t f;
-	        uint8_t a;
-	    };
-	};
+    union {
+        uint16_t af;
+        struct {
+            uint8_t f;
+            uint8_t a;
+        };
+    };
 
     union {
         uint16_t bc;

@@ -57,7 +57,7 @@ enum fgb_cart_rom_size {
 
 enum fgb_cart_ram_size {
     RAM_SIZE_0      = 0x00, // No RAM
-	RAM_SIZE_2KIB   = 0x01, // 2 KiB (Never used)
+    RAM_SIZE_2KIB   = 0x01, // 2 KiB (Never used)
     RAM_SIZE_8KIB   = 0x02, // 8 KiB x1
     RAM_SIZE_32KIB  = 0x03, // 8 KiB x4
     RAM_SIZE_128KIB = 0x04, // 8 KiB x16
@@ -71,7 +71,7 @@ enum fgb_cart_dest_code {
 
 enum fgb_cart_mode {
     CART_MODE_SIMPLE = 0,
-	CART_MODE_ADVANCED = 1,
+    CART_MODE_ADVANCED = 1,
 };
 
 enum fgb_cart_rtc_register {
@@ -116,12 +116,12 @@ typedef struct fgb_cart {
         uint8_t last_latch;
         uint32_t cycles;
     } rtc;
-	bool ram_enabled;
+    bool ram_enabled;
     uint32_t ram_size_bytes;
     uint8_t rom_bank_mask;
     enum fgb_cart_mode mode;
-	uint8_t(*read)(const struct fgb_cart* cart, uint16_t addr);
-	void(*write)(struct fgb_cart* cart, uint16_t addr, uint8_t value);
+    uint8_t(*read)(const struct fgb_cart* cart, uint16_t addr);
+    void(*write)(struct fgb_cart* cart, uint16_t addr, uint8_t value);
     void(*tick)(struct fgb_cart* cart);
 } fgb_cart;
 

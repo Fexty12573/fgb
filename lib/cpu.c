@@ -114,9 +114,9 @@ void fgb_cpu_tick(fgb_cpu *cpu) {
     cpu->total_cycles++;
 
     if (cpu->test_mode) {
-		// Don't tick peripherals in test mode
+        // Don't tick peripherals in test mode
         return;
-	}
+    }
 
     fgb_timer_tick(&cpu->timer);
     fgb_ppu_tick(cpu->ppu);
@@ -488,11 +488,11 @@ void fgb_cpu_set_trace_callback(fgb_cpu *cpu, fgb_cpu_trace_callback callback) {
 }
 
 const fgb_instruction* fgb_cpu_fetch_instruction(fgb_cpu *cpu) {
-	const uint8_t opcode = fgb_cpu_fetch(cpu);
+    const uint8_t opcode = fgb_cpu_fetch(cpu);
     const fgb_instruction* ins = fgb_instruction_get(opcode);
-	assert(ins->opcode == opcode);
+    assert(ins->opcode == opcode);
 
-	return ins;
+    return ins;
 }
 
 uint8_t fgb_cpu_fetch(fgb_cpu *cpu) {
@@ -556,7 +556,7 @@ void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
     const uint8_t ienable = cpu->interrupt.enable;
     uint8_t iflags = cpu->interrupt.flags;
     const uint8_t irq = ienable & iflags;
-	uint16_t dest = 0x0000; // 0 for the case where SP is 0 so PC is pushed to IE and may disable interrupts
+    uint16_t dest = 0x0000; // 0 for the case where SP is 0 so PC is pushed to IE and may disable interrupts
 
     if      (irq & IRQ_VBLANK) { iflags &= ~IRQ_VBLANK; dest = fgb_interrupt_vector[IRQ_VBLANK]; }
     else if (irq & IRQ_LCD)    { iflags &= ~IRQ_LCD;    dest = fgb_interrupt_vector[IRQ_LCD];    }
@@ -568,7 +568,7 @@ void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
     cpu->ime = false;
     cpu->mode = CPU_MODE_NORMAL;
 
-	fgb_cpu_write_u8(cpu, --cpu->regs.sp, (cpu->regs.pc >> 0) & 0xFF);
+    fgb_cpu_write_u8(cpu, --cpu->regs.sp, (cpu->regs.pc >> 0) & 0xFF);
 
     fgb_cpu_m_tick(cpu);
     fgb_cpu_m_tick(cpu);
@@ -690,7 +690,7 @@ inline void fgb_push(fgb_cpu *cpu, uint16_t value) {
 static inline void fgb_ret_(fgb_cpu* cpu) {
     const uint8_t low = fgb_cpu_read_u8(cpu, cpu->regs.sp++);
     const uint8_t high = fgb_cpu_read_u8(cpu, cpu->regs.sp++);
-	cpu->regs.pc = (high << 8 | low) & 0xFFFF;
+    cpu->regs.pc = (high << 8 | low) & 0xFFFF;
     fgb_cpu_m_tick(cpu);
 
     if (cpu->call_depth > 0) {
@@ -965,7 +965,7 @@ void fgb_daa(fgb_cpu* cpu, const fgb_instruction* ins) {
         a += adj;
     }
 
-	cpu->regs.a = a & 0xFF;
+    cpu->regs.a = a & 0xFF;
     set_flag(z, cpu->regs.a == 0);
     set_flag(h, 0);
 }

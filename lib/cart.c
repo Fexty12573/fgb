@@ -66,7 +66,7 @@ fgb_cart* fgb_cart_load(const uint8_t* data, size_t size) {
     if (!fgb_cart_map_banks(cart)) {
         fgb_cart_destroy(cart);
         return NULL;
-	}
+    }
 
     if (size < rom_banks * FGB_CART_ROM_BANK_SIZE) {
         log_error("ROM size (%zu bytes) is smaller than expected (%zu bytes), aborting cart load", size, rom_banks * FGB_CART_ROM_BANK_SIZE);
@@ -82,36 +82,36 @@ fgb_cart* fgb_cart_load(const uint8_t* data, size_t size) {
     case CART_TYPE_MBC1:
     case CART_TYPE_MBC1_RAM:
     case CART_TYPE_MBC1_RAM_BATTERY:
-		cart->read = fgb_cart_read_mbc1;
-		cart->write = fgb_cart_write_mbc1;
-		cart->rom_bank = 1; // MBC1 starts with bank 1 selected
+        cart->read = fgb_cart_read_mbc1;
+        cart->write = fgb_cart_write_mbc1;
+        cart->rom_bank = 1; // MBC1 starts with bank 1 selected
         break;
-	case CART_TYPE_MBC3_RAM_BATTERY:
+    case CART_TYPE_MBC3_RAM_BATTERY:
     case CART_TYPE_MBC3_TIMER_BATTERY:
     case CART_TYPE_MBC3:
     case CART_TYPE_MBC3_RAM:
     case CART_TYPE_MBC3_TIMER_RAM_BATTERY:
-		cart->read = fgb_cart_read_mbc3;
+        cart->read = fgb_cart_read_mbc3;
         cart->write = fgb_cart_write_mbc3;
         cart->tick = fgb_cart_tick_mbc3;
-		cart->rom_bank = 1; // MBC3 starts with bank 1 selected
+        cart->rom_bank = 1; // MBC3 starts with bank 1 selected
         break;
-	case CART_TYPE_ROM_RAM:
-	case CART_TYPE_ROM_RAM_BATTERY:
-	case CART_TYPE_MBC2:
-	case CART_TYPE_MBC2_BATTERY:
-	case CART_TYPE_MBC5:
-	case CART_TYPE_MBC5_RAM:
-	case CART_TYPE_MBC5_RAM_BATTERY:
-	case CART_TYPE_MBC5_RUMBLE:
-	case CART_TYPE_MBC5_RUMBLE_RAM:
-	case CART_TYPE_MBC5_RUMBLE_RAM_BATTERY:
-	case CART_TYPE_HUC3:
-	case CART_TYPE_HUC1_RAM_BATTERY:
-	default:
-		log_warn("Only ROM_ONLY Carts are supported. Game will not work properly");
-		break;
-	}
+    case CART_TYPE_ROM_RAM:
+    case CART_TYPE_ROM_RAM_BATTERY:
+    case CART_TYPE_MBC2:
+    case CART_TYPE_MBC2_BATTERY:
+    case CART_TYPE_MBC5:
+    case CART_TYPE_MBC5_RAM:
+    case CART_TYPE_MBC5_RAM_BATTERY:
+    case CART_TYPE_MBC5_RUMBLE:
+    case CART_TYPE_MBC5_RUMBLE_RAM:
+    case CART_TYPE_MBC5_RUMBLE_RAM_BATTERY:
+    case CART_TYPE_HUC3:
+    case CART_TYPE_HUC1_RAM_BATTERY:
+    default:
+        log_warn("Only ROM_ONLY Carts are supported. Game will not work properly");
+        break;
+    }
 
     memcpy(cart->rom, data, size);
     cart->rom_size = size;
@@ -386,62 +386,62 @@ uint8_t fgb_cart_read_mbc1(const fgb_cart* cart, uint16_t addr) {
         }
 
         // Switchable ROM bank (using upper bits)
-		return cart->rom_banks[cart->ram_bank][addr];
+        return cart->rom_banks[cart->ram_bank][addr];
     }
 
     if (addr < 0x8000) {
-		return cart->rom_banks[(cart->ram_bank << 5) | cart->rom_bank][addr - 0x4000];
+        return cart->rom_banks[(cart->ram_bank << 5) | cart->rom_bank][addr - 0x4000];
     }
 
     if (addr >= 0xA000 && addr < 0xC000 && cart->ram_enabled && cart->ram_size_bytes > 0) {
         const uint32_t offset = (addr - 0xA000) % cart->ram_size_bytes;
 
-		if (cart->mode == CART_MODE_SIMPLE) {
+        if (cart->mode == CART_MODE_SIMPLE) {
             return cart->ram_banks[0][offset];
-		}
+        }
 
-		return cart->ram_banks[cart->ram_bank][offset];
+        return cart->ram_banks[cart->ram_bank][offset];
     }
 
-	log_warn("Attempt to read from unmapped MBC1 memory at address 0x%04X", addr);
-	return 0xFF;
+    log_warn("Attempt to read from unmapped MBC1 memory at address 0x%04X", addr);
+    return 0xFF;
 }
 
 void fgb_cart_write_mbc1(fgb_cart* cart, uint16_t addr, uint8_t value) {
     if (addr < 0x2000) {
-	    cart->ram_enabled = (value & 0x0F) == 0x0A;
-		return;
+        cart->ram_enabled = (value & 0x0F) == 0x0A;
+        return;
     }
 
     if (addr < 0x4000) {
-	    cart->rom_bank = value
+        cart->rom_bank = value
             ? value & cart->rom_bank_mask & 0x1F // Register is still 5 bits
-			: 1;
+            : 1;
         return;
     }
 
     if (addr < 0x6000) {
-		cart->ram_bank = value & 0x03;
+        cart->ram_bank = value & 0x03;
         return;
     }
 
     if (addr < 0x8000) {
-	    cart->mode = value & 0x1;
-		return;
+        cart->mode = value & 0x1;
+        return;
     }
 
     if (addr >= 0xA000 && addr < 0xC000 && cart->ram_enabled && cart->ram_size_bytes > 0) {
-		const uint32_t offset = (addr - 0xA000) % cart->ram_size_bytes;
+        const uint32_t offset = (addr - 0xA000) % cart->ram_size_bytes;
 
         if (cart->mode == CART_MODE_SIMPLE) {
-			cart->ram_banks[0][offset] = value;
+            cart->ram_banks[0][offset] = value;
         } else {
-			cart->ram_banks[cart->ram_bank][offset] = value;
+            cart->ram_banks[cart->ram_bank][offset] = value;
         }
 
         return;
-	}
+    }
 
-	log_warn("Attempt to write to unmapped MBC1 memory at address 0x%04X", addr);
+    log_warn("Attempt to write to unmapped MBC1 memory at address 0x%04X", addr);
 }
 
