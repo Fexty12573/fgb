@@ -8,7 +8,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(microlog_DIR ${CMAKE_SOURCE_DIR}/external/microlog)
 find_package(microlog REQUIRED)
 
-set(SOURCES cpu.c instruction.c mmu.c cart.c emu.c timer.c io.c ppu.c)
+set(SOURCES cpu.c instruction.c mmu.c cart.c emu.c timer.c io.c ppu.c apu.c audio/channel.c)
 add_library(libfgb STATIC ${SOURCES})
 
 target_link_libraries(libfgb PUBLIC microlog::microlog)
