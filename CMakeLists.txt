@@ -24,13 +24,15 @@ set(IMGUI_BACKEND_SOURCES
     ${IMGUI_BACKEND_DIR}/imgui_impl_opengl3.cpp
 )
 
-add_executable(${PROJECT_NAME} src/main.c src/render.c ${IMGUI_BACKEND_SOURCES})
+add_executable(${PROJECT_NAME} src/main.c src/render.c src/audio.c ${IMGUI_BACKEND_SOURCES})
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     CIMGUI_USE_GLFW
     CIMGUI_USE_OPENGL3
     CIMGUI_DEFINE_ENUMS_AND_STRUCTS
 )
+
+target_include_directories(${PROJECT_NAME} PRIVATE external)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     libfgb
