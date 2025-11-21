@@ -61,9 +61,7 @@ typedef struct fgb_apu {
     size_t sample_chunk;
     uint16_t cycle_counter;
     uint8_t sequencer_step; // 0-7
-    uint32_t accumulated_samples;
-    int32_t sample_timer;
-    int32_t sample_period;
+    uint64_t accumulator;
     fgb_apu_sample_callback sample_callback;
     void* userdata;
     float* sample_buffer;

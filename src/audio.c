@@ -21,13 +21,11 @@ static fgb_audio_driver* s_driver = NULL;
 static void fgb_audio_callback(ma_device* device, void* output, const void* input, ma_uint32 frames);
 
 bool fgb_audio_init(uint32_t device_rate, uint32_t emu_rate) {
-    s_driver = malloc(sizeof(fgb_audio_driver));
+    s_driver = calloc(1, sizeof(fgb_audio_driver));
     if (!s_driver) {
         log_error("Failed to allocate audio driver");
         return false;
     }
-
-    s_driver->convert = (device_rate != emu_rate);
 
     ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
     cfg.playback.format = ma_format_f32;
@@ -36,14 +34,26 @@ bool fgb_audio_init(uint32_t device_rate, uint32_t emu_rate) {
     cfg.dataCallback = fgb_audio_callback;
     cfg.pUserData = s_driver;
 
-    ma_result r = ma_pcm_rb_init(ma_format_f32, 2, device_rate * 2, NULL, NULL, &s_driver->buffer);
+    ma_result r = ma_device_init(NULL, &cfg, &s_driver->device);
     if (r != MA_SUCCESS) {
-        log_error("Failed to initialize audio ring buffer: %d", r);
+        log_error("Failed to initialize audio device: %d", r);
         free(s_driver);
         s_driver = NULL;
         return false;
     }
 
+    device_rate = s_driver->device.sampleRate; // Update in case the device changed it.
+
+    r = ma_pcm_rb_init(ma_format_f32, 2, device_rate / 4, NULL, NULL, &s_driver->buffer);
+    if (r != MA_SUCCESS) {
+        log_error("Failed to initialize audio ring buffer: %d", r);
+        ma_device_uninit(&s_driver->device);
+        free(s_driver);
+        s_driver = NULL;
+        return false;
+    }
+
+    s_driver->convert = (device_rate != emu_rate);
     if (s_driver->convert) {
         const ma_data_converter_config conv_cfg = ma_data_converter_config_init(
             ma_format_f32,
@@ -57,23 +67,12 @@ bool fgb_audio_init(uint32_t device_rate, uint32_t emu_rate) {
         r = ma_data_converter_init(&conv_cfg, NULL, &s_driver->converter);
         if (r != MA_SUCCESS) {
             log_error("Failed to initialize audio data converter: %d", r);
+            ma_device_uninit(&s_driver->device);
             ma_pcm_rb_uninit(&s_driver->buffer);
             free(s_driver);
             s_driver = NULL;
             return false;
         }
-    }
-
-    r = ma_device_init(NULL, &cfg, &s_driver->device);
-    if (r != MA_SUCCESS) {
-        log_error("Failed to initialize audio device: %d", r);
-        if (s_driver->convert) {
-            ma_data_converter_uninit(&s_driver->converter, NULL);
-        }
-        ma_pcm_rb_uninit(&s_driver->buffer);
-        free(s_driver);
-        s_driver = NULL;
-        return false;
     }
 
     r = ma_device_start(&s_driver->device);
@@ -179,7 +178,6 @@ void fgb_audio_callback(ma_device* device, void* output, const void* input, ma_u
         const size_t dst_size = (size_t)to_read * 2 * sizeof(float);
 
         if (r != MA_SUCCESS || to_read == 0) {
-            log_warn("Not enough audio samples, filling remaining %zu samples with 0", (size_t)(frames - frames_read));
             // Fill the rest with silence
             memset(dst_ptr, 0, (size_t)(frames - frames_read) * 2 * sizeof(float));
             frames_read = frames;

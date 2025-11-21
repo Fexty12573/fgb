@@ -314,8 +314,8 @@ static void render_line_sprites(void) {
     igEnd();
 }
 
-static void render_debug_options(void) {
-    igBegin("Debug Options", NULL, ImGuiWindowFlags_None);
+static void render_cpu_options(void) {
+    igBegin("CPU", NULL, ImGuiWindowFlags_None);
 
     if (igButton("Reset", (ImVec2) { 0, 0 })) {
         uint16_t bps[FGB_CPU_MAX_BREAKPOINTS];
@@ -680,6 +680,12 @@ static void render_ppu_options(void) {
 
         igTableNextRow(0, 0);
         igTableSetColumnIndex(0);
+        igText("App Framerate: %.2f FPS", g_app.render_framerate);
+        igText("Emu Framerate: %.2f FPS", g_app.emu_framerate);
+        igText("Emu Frametime: %.2fus", g_app.emu_update_time);
+
+        igTableNextColumn();
+        igTableNextColumn();
 
         struct { uint8_t x, y; } window_pos = {
             .x = ppu->window_pos.x,
@@ -1116,7 +1122,7 @@ int main(int argc, char** argv) {
 
         render_tilesets(tiles_per_row, block_textures);
         render_line_sprites();
-        render_debug_options();
+        render_cpu_options();
         render_ppu_options();
 
         igRender();

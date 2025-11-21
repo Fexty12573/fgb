@@ -42,8 +42,6 @@ fgb_apu* fgb_apu_create(uint32_t sample_rate, fgb_apu_sample_callback sample_cal
     apu->sample_callback = sample_callback;
     apu->userdata = userdata;
     apu->sample_buffer = malloc(sizeof(float) * 2 * apu->sample_chunk);
-    apu->sample_period = FGB_CPU_CLOCK_SPEED / (int32_t)sample_rate;
-    apu->sample_timer = apu->sample_period;
 
     if (!apu->sample_buffer) {
         log_error("Failed to allocate APU sample buffer");
@@ -83,8 +81,10 @@ void fgb_apu_tick(fgb_apu* apu) {
     fgb_audio_channel_3_tick(&apu->channel3);
     fgb_audio_channel_4_tick(&apu->channel4);
 
-    if (apu->sample_timer-- <= 0) {
-        apu->sample_timer = apu->sample_period;
+    apu->accumulator += apu->sample_rate;
+    if (apu->accumulator >= FGB_CPU_CLOCK_SPEED) {
+        apu->accumulator -= FGB_CPU_CLOCK_SPEED;
+
         // Mix samples
         float left_sample = 0.0f;
         float right_sample = 0.0f;
