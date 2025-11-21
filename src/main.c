@@ -996,7 +996,7 @@ int main(int argc, char** argv) {
         last_time = current_time;
         accumulator += delta_time;
 
-        if (accumulator >= emu_frametime) {
+        while (accumulator >= emu_frametime) {
             accumulator -= emu_frametime;
             fgb_cpu_run_frame(g_app.emu->cpu);
         }
