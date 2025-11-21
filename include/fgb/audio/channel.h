@@ -55,8 +55,12 @@ typedef struct fgb_audio_channel_1 {
     bool enabled;
     uint8_t sample;
     uint8_t waveform_index;
+    uint8_t length_timer;
     uint32_t sample_rate;
     int timer;
+
+    uint8_t sweep_pace;
+    uint8_t sweep_timer;
 
     fgb_audio_envelope envelope;
 
@@ -74,16 +78,17 @@ typedef struct fgb_audio_channel_1 {
     union fgb_nrx2 nr12;
     union fgb_nrx3 nr13;
     union fgb_nrx4 nr14;
-
-    uint8_t length_timer;
 } fgb_audio_channel_1;
 
 typedef struct fgb_audio_channel_2 {
     bool enabled;
     uint8_t sample;
     uint8_t waveform_index;
+    uint8_t length_timer;
     uint32_t sample_rate;
     int timer;
+
+    fgb_audio_envelope envelope;
 
     union fgb_nrx1 nr21;
     union fgb_nrx2 nr22;
@@ -162,8 +167,8 @@ uint8_t fgb_audio_channel_3_read(const fgb_audio_channel_3* ch, uint16_t addr);
 uint8_t fgb_audio_channel_4_read(const fgb_audio_channel_4* ch, uint16_t addr);
 
 void fgb_audio_channel_1_write(fgb_audio_channel_1* ch, uint16_t addr, uint8_t value);
-void fgb_audio_channel_2_write(const fgb_audio_channel_2* ch, uint16_t addr, uint8_t value);
-void fgb_audio_channel_3_write(const fgb_audio_channel_3* ch, uint16_t addr, uint8_t value);
-void fgb_audio_channel_4_write(const fgb_audio_channel_4* ch, uint16_t addr, uint8_t value);
+void fgb_audio_channel_2_write(fgb_audio_channel_2* ch, uint16_t addr, uint8_t value);
+void fgb_audio_channel_3_write(fgb_audio_channel_3* ch, uint16_t addr, uint8_t value);
+void fgb_audio_channel_4_write(fgb_audio_channel_4* ch, uint16_t addr, uint8_t value);
 
 #endif // FGB_AUDIO_CHANNEL_H

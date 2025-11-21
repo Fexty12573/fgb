@@ -12,6 +12,17 @@
 #define FRAME_SEQUENCER_STEPS 8
 #define SAMPLE_LENGTH_MS 5.3f // ~5.3ms latency
 
+#define ACCUMULATE_SAMPLES(CHANNEL) \
+    do { \
+        float raw_sample = apu->channel##CHANNEL##.sample; \
+        if (apu->nr51.ch##CHANNEL##_l) { \
+            left_sample += (raw_sample * (float)apu->nr50.vol_l) / (15.0f * 7.0f); \
+        } \
+        if (apu->nr51.ch##CHANNEL##_r) { \
+            right_sample += (raw_sample * (float)apu->nr50.vol_r) / (15.0f * 7.0f); \
+        } \
+    } while (0)
+
 fgb_apu* fgb_apu_create(uint32_t sample_rate, fgb_apu_sample_callback sample_callback, void* userdata) {
     fgb_apu* apu = malloc(sizeof(fgb_apu));
     if (!apu) {
@@ -78,15 +89,8 @@ void fgb_apu_tick(fgb_apu* apu) {
         float left_sample = 0.0f;
         float right_sample = 0.0f;
 
-        const float raw_sample = apu->channel1.sample;
-
-        if (apu->nr51.ch1_l) {
-            left_sample += (raw_sample * (float)apu->nr50.vol_l) / (15.0f * 7.0f);
-        }
-
-        if (apu->nr51.ch1_r) {
-            right_sample += (raw_sample * (float)apu->nr50.vol_r) / (15.0f * 7.0f);
-        }
+        ACCUMULATE_SAMPLES(1);
+        ACCUMULATE_SAMPLES(2);
 
         // TODO: Repeat for other channels
 
