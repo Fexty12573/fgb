@@ -32,10 +32,8 @@ size_t file_size(FILE* f) {
 
 struct app {
     fgb_emu* emu;
-    thrd_t emu_thread;
     bool running;
     bool display_screen;
-    bool emulate;
     int block_to_display;
     double render_framerate;
     double emu_framerate;
@@ -60,7 +58,6 @@ struct app g_app = {
     .emu = NULL,
     .running = true,
     .display_screen = true,
-    .emulate = true,
     .block_to_display = 0,
     .render_framerate = 0.0,
     .emu_framerate = 0.0,
@@ -894,57 +891,12 @@ static void setup_dockspace(void) {
     igEnd();
 }
 
-static int emu_run(void* arg) {
-    const fgb_emu* emu = arg;
-
-    const double frametime = 1.0 / FGB_SCREEN_REFRESH_RATE;
-    struct timespec ts = { 0 };
-    double error = 0.0;
-    
-    while (g_app.running && g_app.emulate) {
-        const double start_time = glfwGetTime();
-
-        fgb_cpu_run_frame(emu->cpu);
-
-        const double end_time = glfwGetTime();
-        const double elapsed = end_time - start_time;
-        const double to_sleep = frametime - elapsed + error;
-
-        if (to_sleep > 0.0) {
-            ts.tv_sec = (time_t)to_sleep;
-            ts.tv_nsec = (long)((to_sleep - (time_t)to_sleep) * 1e9);
-            (void)thrd_sleep(&ts, NULL);
-        }
-
-        const double actual_frametime = glfwGetTime() - start_time;
-        g_app.emu_framerate = 1.0 / actual_frametime;
-        g_app.emu_update_time = elapsed;
-
-        error = frametime - actual_frametime;
-    }
-
-    return 0;
-}
-
 bool emu_start(void) {
-    g_app.emulate = true;
-    if (thrd_create(&g_app.emu_thread, emu_run, g_app.emu) != thrd_success) {
-        log_error("Could not create emulator thread. Exiting");
-        return false;
-    }
-
     return true;
 }
 
 bool emu_stop(void) {
-    g_app.emulate = false;
     g_app.emu->cpu->mode = CPU_MODE_NORMAL; // Ensure CPU is not in halt or stop mode
-    int res = 0;
-    if (thrd_join(g_app.emu_thread, &res) != thrd_success) {
-        log_error("Could not join emulator thread. Exiting");
-        return false;
-    }
-
     return true;
 }
 
@@ -1032,13 +984,22 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    const double emu_frametime = 1.0 / FGB_SCREEN_REFRESH_RATE;
+
     double last_time = glfwGetTime();
     double last_title_update = last_time;
+    double accumulator = 0.0;
 
     while (!glfwWindowShouldClose(window)) {
         const double current_time = glfwGetTime();
         const double delta_time = current_time - last_time;
         last_time = current_time;
+        accumulator += delta_time;
+
+        if (accumulator >= emu_frametime) {
+            accumulator -= emu_frametime;
+            fgb_cpu_run_frame(g_app.emu->cpu);
+        }
 
         if (current_time - last_title_update >= 1.0) {
             char title[256];
@@ -1140,9 +1101,6 @@ int main(int argc, char** argv) {
     }
 
     g_app.running = false;
-    if (thrd_join(g_app.emu_thread, NULL) != thrd_success) {
-        log_error("Could not join emulator thread.");
-    }
 
     fgb_emu_destroy(g_app.emu);
 
