@@ -44,6 +44,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
 if (MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /wd5287)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE 
+        _CRT_SECURE_NO_WARNINGS
+        NOMINMAX
+    )
 endif()
 
 add_dependencies(${PROJECT_NAME} rom)

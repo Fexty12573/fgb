@@ -46,7 +46,7 @@ union fgb_nrx4 {
 };
 
 typedef struct fgb_audio_envelope {
-    uint8_t volume;
+    int8_t volume;
     int8_t timer;
     bool done;
 } fgb_audio_envelope;
