@@ -9,6 +9,7 @@
 #define MAKE_PERIOD(nrx3, nrx4) (((nrx4).period_high) << 8 | (nrx3).period_low)
 #define PERIOD_LOW(period) ((period) & 0xFF)
 #define PERIOD_HIGH(period) (((period) >> 8) & 0x07)
+#define WAVEFORM_SAMPLE(WAVE_RAM, INDEX) (((INDEX) & 1) ? ((WAVE_RAM)[(INDEX) >> 1] & 0x0F) : (((WAVE_RAM)[(INDEX) >> 1] >> 4) & 0x0F))
 
 static const uint8_t s_waveforms[DUTY_CYCLE_COUNT][WAVEFORM_LENGTH] = {
     [DUTY_CYCLE_12_5] = {0, 0, 0, 0, 0, 0, 0, 1}, // 12.5%
@@ -17,14 +18,45 @@ static const uint8_t s_waveforms[DUTY_CYCLE_COUNT][WAVEFORM_LENGTH] = {
     [DUTY_CYCLE_75]   = {0, 1, 1, 1, 1, 1, 1, 0}, // 75%
 };
 
+static const int8_t s_waveforms_signed[DUTY_CYCLE_COUNT][WAVEFORM_LENGTH] = {
+    [DUTY_CYCLE_12_5] = {-8, -8, -8, -8, -8, -8, -8, +7},
+    [DUTY_CYCLE_25]   = {+7, -8, -8, -8, -8, -8, -8, +7},
+    [DUTY_CYCLE_50]   = {+7, -8, -8, -8, -8, +7, +7, +7},
+    [DUTY_CYCLE_75]   = {-8, +7, +7, +7, +7, +7, +7, -8},
+};
+
+static const uint8_t s_ch3_output_level_shift[4] = {
+    [0] = 4, // Mute
+    [1] = 0, // 100%
+    [2] = 1, // 50%
+    [3] = 2, // 25%
+};
+
+static inline int gb_ch15_period_to_timer(uint16_t period) {
+    // GB channel 1/2 freq divider clocks at 4MHz/4 = 1MHz steps of (2048 - period) * 4 t-cycles
+    // Our tick is in CPU t-cycles, so timer = (2048 - period) * 4
+    int p = 2048 - (int)period;
+    if (p <= 0) p = 1;
+    return p << 2;
+}
+
+static inline int gb_ch3_period_to_timer(uint16_t period) {
+    // Channel 3 runs at 2x speed relative to ch1/2 (timer = (2048 - period) * 2 t-cycles)
+    int p = 2048 - (int)period;
+    if (p <= 0) p = 1;
+    return p << 1;
+}
+
 void fgb_audio_channel_1_tick(fgb_audio_channel_1* ch) {
     if (ch->timer-- <= 0) {
-        ch->timer = MAKE_PERIOD(ch->nr13, ch->nr14) << 2;
+        ch->timer = gb_ch15_period_to_timer(MAKE_PERIOD(ch->nr13, ch->nr14));
 
         ch->waveform_index = (ch->waveform_index + 1) % WAVEFORM_LENGTH;
 
         if (ch->enabled) {
-            ch->sample = s_waveforms[ch->nr11.wave_duty][ch->waveform_index] * ch->envelope.volume;
+            // Centered square wave: scale envelope (0..15) by +/- values
+            int8_t wave = s_waveforms_signed[ch->nr11.wave_duty][ch->waveform_index];
+            ch->sample = (int8_t)((wave * (int)ch->envelope.volume) / 15);
         } else {
             ch->sample = 0;
         }
@@ -33,12 +65,13 @@ void fgb_audio_channel_1_tick(fgb_audio_channel_1* ch) {
 
 void fgb_audio_channel_2_tick(fgb_audio_channel_2* ch) {
     if (ch->timer-- <= 0) {
-        ch->timer = MAKE_PERIOD(ch->nr23, ch->nr24) << 2;
+        ch->timer = gb_ch15_period_to_timer(MAKE_PERIOD(ch->nr23, ch->nr24));
 
         ch->waveform_index = (ch->waveform_index + 1) % WAVEFORM_LENGTH;
 
         if (ch->enabled) {
-            ch->sample = s_waveforms[ch->nr21.wave_duty][ch->waveform_index] * ch->envelope.volume;
+            int8_t wave = s_waveforms_signed[ch->nr21.wave_duty][ch->waveform_index];
+            ch->sample = (int8_t)((wave * (int)ch->envelope.volume) / 15);
         } else {
             ch->sample = 0;
         }
@@ -46,7 +79,22 @@ void fgb_audio_channel_2_tick(fgb_audio_channel_2* ch) {
 }
 
 void fgb_audio_channel_3_tick(fgb_audio_channel_3* ch) {
+    if (ch->timer-- <= 0) {
+        ch->timer = gb_ch3_period_to_timer(MAKE_PERIOD(ch->nr33, ch->nr34));
 
+        // 32 4-bit samples in wave RAM, addressed by 0..31
+        ch->waveform_index = (uint8_t)((ch->waveform_index + 1) & 31);
+
+        if (ch->enabled && ch->nr30.dac_en) {
+            uint8_t raw = WAVEFORM_SAMPLE(ch->wave_ram, ch->waveform_index); // 0..15
+            // Center wave to signed by mapping 0..15 to -8..+7, then apply output level shift
+            int8_t centered = (int8_t)raw - 8;
+            centered >>= s_ch3_output_level_shift[ch->nr32.output_level];
+            ch->sample = centered;
+        } else {
+            ch->sample = 0;
+        }
+    }
 }
 
 void fgb_audio_channel_4_tick(fgb_audio_channel_4* ch) {
@@ -134,6 +182,13 @@ void fgb_audio_channel_3_fs_tick(fgb_audio_channel_3* ch, uint8_t step) {
     if (!ch->enabled) {
         return;
     }
+
+    if (IS_256HZ_TICK(step) && ch->nr34.length_en && ch->length_timer > 0) {
+        ch->length_timer--;
+        if (ch->length_timer == 0) {
+            ch->enabled = false;
+        }
+    }
 }
 
 void fgb_audio_channel_4_fs_tick(fgb_audio_channel_4* ch, uint8_t step) {
@@ -175,7 +230,24 @@ uint8_t fgb_audio_channel_2_read(const fgb_audio_channel_2* ch, uint16_t addr) {
 }
 
 uint8_t fgb_audio_channel_3_read(const fgb_audio_channel_3* ch, uint16_t addr) {
-    return 0xFF;
+    if (addr >= 0xFF30 && addr < 0xFF40) {
+        return ch->wave_ram[addr - 0xFF30];
+    }
+
+    switch (addr) {
+    case 0xFF1A:
+        return ch->nr30.value;
+    case 0xFF1B:
+        return ch->nr31.value;
+    case 0xFF1C:
+        return ch->nr32.value;
+    case 0xFF1D:
+        return 0x00; // period_low is write-only
+    case 0xFF1E:
+        return ch->nr34.value & 0x78; // Bits 3-6 only, others are write-only
+    default:
+        return 0xFF;
+    }
 }
 
 uint8_t fgb_audio_channel_4_read(const fgb_audio_channel_4* ch, uint16_t addr) {
@@ -200,7 +272,7 @@ void fgb_audio_channel_1_write(fgb_audio_channel_1* ch, uint16_t addr, uint8_t v
         break;
     case 0xFF11:
         ch->nr11.value = value;
-        ch->length_timer = 64 - (ch->nr11.init_length_timer & 0x3F);
+        ch->length_timer = 64 - ch->nr11.init_length_timer;
         break;
     case 0xFF12:
         ch->nr12.value = value;
@@ -213,7 +285,7 @@ void fgb_audio_channel_1_write(fgb_audio_channel_1* ch, uint16_t addr, uint8_t v
         if (ch->nr14.trigger) {
             ch->enabled = true;
             if (ch->length_timer == 0) {
-                ch->length_timer = 64;
+                ch->length_timer = 64 - ch->nr11.init_length_timer;
             }
 
             ch->envelope.volume = ch->nr12.init_vol;
@@ -223,7 +295,7 @@ void fgb_audio_channel_1_write(fgb_audio_channel_1* ch, uint16_t addr, uint8_t v
             ch->sweep_pace = ch->nr10.pace;
             ch->sweep_timer = ch->sweep_pace ? ch->sweep_pace : 8;
 
-            ch->timer = MAKE_PERIOD(ch->nr13, ch->nr14) << 2;
+            ch->timer = gb_ch15_period_to_timer(MAKE_PERIOD(ch->nr13, ch->nr14));
             ch->waveform_index = 0;
 
             // TODO:
@@ -239,7 +311,7 @@ void fgb_audio_channel_2_write(fgb_audio_channel_2* ch, uint16_t addr, uint8_t v
     switch (addr) {
     case 0xFF16:
         ch->nr21.value = value;
-        ch->length_timer = 64 - (ch->nr21.init_length_timer & 0x3F);
+        ch->length_timer = 64 - ch->nr21.init_length_timer;
         break;
     case 0xFF17:
         ch->nr22.value = value;
@@ -252,14 +324,14 @@ void fgb_audio_channel_2_write(fgb_audio_channel_2* ch, uint16_t addr, uint8_t v
         if (ch->nr24.trigger) {
             ch->enabled = true;
             if (ch->length_timer == 0) {
-                ch->length_timer = 64;
+                ch->length_timer = 64 - ch->nr21.init_length_timer;
             }
 
             ch->envelope.volume = ch->nr22.init_vol;
             ch->envelope.timer = ch->nr22.pace ? ch->nr22.pace : 8;
             ch->envelope.done = false;
 
-            ch->timer = MAKE_PERIOD(ch->nr23, ch->nr24) << 2;
+            ch->timer = gb_ch15_period_to_timer(MAKE_PERIOD(ch->nr23, ch->nr24));
             ch->waveform_index = 0;
 
             // TODO:
@@ -272,7 +344,44 @@ void fgb_audio_channel_2_write(fgb_audio_channel_2* ch, uint16_t addr, uint8_t v
 }
 
 void fgb_audio_channel_3_write(fgb_audio_channel_3* ch, uint16_t addr, uint8_t value) {
+    if (addr >= 0xFF30 && addr < 0xFF40) {
+        ch->wave_ram[addr - 0xFF30] = value;
+        return;
+    }
 
+    switch (addr) {
+    case 0xFF1A:
+        ch->nr30.value = value;
+        break;
+    case 0xFF1B:
+        ch->nr31.value = value;
+        // NR31 is 0..255 where length = 256 - N
+        ch->length_timer = (uint8_t)(256 - ch->nr31.init_length_timer);
+        break;
+    case 0xFF1C:
+        ch->nr32.value = value;
+        break;
+    case 0xFF1D:
+        ch->nr33.value = value;
+        break;
+    case 0xFF1E:
+        ch->nr34.value = value;
+        if (ch->nr34.trigger) {
+            ch->enabled = true;
+            if (ch->length_timer == 0) {
+                ch->length_timer = 256;
+            }
+
+            ch->timer = gb_ch3_period_to_timer(MAKE_PERIOD(ch->nr33, ch->nr34));
+            ch->waveform_index = 1; // CH3 starts at index 1 on trigger
+
+            // TODO:
+            // - Reset volume
+        }
+        break;
+    default:
+        break;
+    }
 }
 
 void fgb_audio_channel_4_write(fgb_audio_channel_4* ch, uint16_t addr, uint8_t value) {

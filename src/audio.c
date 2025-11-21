@@ -1,6 +1,7 @@
 #include "audio.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #define MINIAUDIO_IMPLEMENTATION
 #include <ulog.h>
@@ -66,7 +67,9 @@ bool fgb_audio_init(uint32_t device_rate, uint32_t emu_rate) {
     r = ma_device_init(NULL, &cfg, &s_driver->device);
     if (r != MA_SUCCESS) {
         log_error("Failed to initialize audio device: %d", r);
-        ma_data_converter_uninit(&s_driver->converter, NULL);
+        if (s_driver->convert) {
+            ma_data_converter_uninit(&s_driver->converter, NULL);
+        }
         ma_pcm_rb_uninit(&s_driver->buffer);
         free(s_driver);
         s_driver = NULL;
@@ -77,7 +80,9 @@ bool fgb_audio_init(uint32_t device_rate, uint32_t emu_rate) {
     if (r != MA_SUCCESS) {
         log_error("Failed to start audio device: %d", r);
         ma_device_uninit(&s_driver->device);
-        ma_data_converter_uninit(&s_driver->converter, NULL);
+        if (s_driver->convert) {
+            ma_data_converter_uninit(&s_driver->converter, NULL);
+        }
         ma_pcm_rb_uninit(&s_driver->buffer);
         free(s_driver);
         s_driver = NULL;
@@ -89,24 +94,67 @@ bool fgb_audio_init(uint32_t device_rate, uint32_t emu_rate) {
 
 void fgb_audio_push_samples(const float* interleaved, size_t frame_count, void* userdata) {
     fgb_audio_driver* driver = userdata;
+    if (!driver || frame_count == 0) return;
 
     if (driver->convert) {
+        // Convert in chunks and write to ring buffer robustly.
+        const float* in = interleaved;
+        ma_uint64 in_frames_remaining = (ma_uint64)frame_count;
         float buf[4096 * 2];
-        ma_uint64 in_frames = frame_count;
-        ma_uint64 out_frames = sizeof(buf) / (2 * sizeof(float));
-        ma_data_converter_process_pcm_frames(&driver->converter, interleaved, &in_frames, buf, &out_frames);
 
-        ma_uint32 frames_written = (ma_uint32)out_frames;
-        void* write_buffer = NULL;
-        ma_pcm_rb_acquire_write(&driver->buffer, &frames_written, &write_buffer);
-        memcpy(write_buffer, buf, (size_t)frames_written * 2 * sizeof(float));
-        ma_pcm_rb_commit_write(&driver->buffer, frames_written);
+        while (in_frames_remaining > 0) {
+            ma_uint64 in_frames = in_frames_remaining;
+            ma_uint64 out_frames = (ma_uint64)(sizeof(buf) / (2 * sizeof(float)));
+
+            ma_result cr = ma_data_converter_process_pcm_frames(&driver->converter, in, &in_frames, buf, &out_frames);
+            if (cr != MA_SUCCESS) {
+                // On converter failure, drop remaining.
+                break;
+            }
+
+            in += (size_t)in_frames * 2;
+            in_frames_remaining -= in_frames;
+
+            // Write converted frames to ring buffer, handling partial writes.
+            ma_uint32 written = 0;
+            ma_uint32 total = (ma_uint32)out_frames;
+            while (written < total) {
+                ma_uint32 to_write = total - written;
+                void* write_buffer = NULL;
+                ma_result wr = ma_pcm_rb_acquire_write(&driver->buffer, &to_write, &write_buffer);
+                if (wr != MA_SUCCESS || to_write == 0) {
+                    // Buffer full; stop trying to write this chunk.
+                    break;
+                }
+                memcpy(write_buffer, buf + ((size_t)written * 2), (size_t)to_write * 2 * sizeof(float));
+                ma_pcm_rb_commit_write(&driver->buffer, to_write);
+                written += to_write;
+            }
+
+            // If nothing was consumed and nothing was produced, avoid infinite loop.
+            if (in_frames == 0 && out_frames == 0) {
+                break;
+            }
+        }
     } else {
-        ma_uint32 frames_written = (ma_uint32)frame_count;
-        void* write_buffer = NULL;
-        ma_pcm_rb_acquire_write(&driver->buffer, &frames_written, &write_buffer);
-        memcpy(write_buffer, interleaved, (size_t)frames_written * 2 * sizeof(float));
-        ma_pcm_rb_commit_write(&driver->buffer, frames_written);
+        // No conversion; write directly in chunks that fit the ring buffer.
+        const float* src = interleaved;
+        ma_uint32 remaining = (ma_uint32)frame_count;
+        ma_uint32 written_total = 0;
+
+        while (remaining > 0) {
+            ma_uint32 to_write = remaining;
+            void* write_buffer = NULL;
+            ma_result wr = ma_pcm_rb_acquire_write(&driver->buffer, &to_write, &write_buffer);
+            if (wr != MA_SUCCESS || to_write == 0) {
+                // Buffer full; drop remaining frames to avoid blocking the producer.
+                break;
+            }
+            memcpy(write_buffer, src + ((size_t)written_total * 2), (size_t)to_write * 2 * sizeof(float));
+            ma_pcm_rb_commit_write(&driver->buffer, to_write);
+            written_total += to_write;
+            remaining -= to_write;
+        }
     }
 }
 
@@ -131,6 +179,7 @@ void fgb_audio_callback(ma_device* device, void* output, const void* input, ma_u
         const size_t dst_size = (size_t)to_read * 2 * sizeof(float);
 
         if (r != MA_SUCCESS || to_read == 0) {
+            log_warn("Not enough audio samples, filling remaining %zu samples with 0", (size_t)(frames - frames_read));
             // Fill the rest with silence
             memset(dst_ptr, 0, (size_t)(frames - frames_read) * 2 * sizeof(float));
             frames_read = frames;

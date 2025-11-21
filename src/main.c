@@ -27,7 +27,8 @@ size_t file_size(FILE* f) {
 
 #define DISASM_LINES 20
 #define WINDOW_SCALE 2
-#define AUDIO_SAMPLE_RATE 44100
+#define APU_SAMPLE_RATE 48000 // 1.048576 MHz
+#define AUDIO_SAMPLE_RATE 48000 // 48 kHz
 
 struct app {
     fgb_emu* emu;
@@ -135,7 +136,7 @@ static fgb_emu* emu_init(const char* rom_path) {
     fread(data, 1, size, f);
     fclose(f);
 
-    fgb_emu* emu = fgb_emu_create(data, size, AUDIO_SAMPLE_RATE, fgb_audio_push_samples, fgb_audio_get_driver());
+    fgb_emu* emu = fgb_emu_create(data, size, APU_SAMPLE_RATE, fgb_audio_push_samples, fgb_audio_get_driver());
     free(data);
 
     return emu;
@@ -983,7 +984,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    if (!fgb_audio_init(AUDIO_SAMPLE_RATE, AUDIO_SAMPLE_RATE)) {
+    if (!fgb_audio_init(AUDIO_SAMPLE_RATE, APU_SAMPLE_RATE)) {
         return 1;
     }
     

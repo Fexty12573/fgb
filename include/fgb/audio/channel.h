@@ -53,7 +53,7 @@ typedef struct fgb_audio_envelope {
 
 typedef struct fgb_audio_channel_1 {
     bool enabled;
-    uint8_t sample;
+    int8_t sample; // signed sample for centered waveform (-15..+15)
     uint8_t waveform_index;
     uint8_t length_timer;
     uint32_t sample_rate;
@@ -82,7 +82,7 @@ typedef struct fgb_audio_channel_1 {
 
 typedef struct fgb_audio_channel_2 {
     bool enabled;
-    uint8_t sample;
+    int8_t sample; // signed sample for centered waveform (-15..+15)
     uint8_t waveform_index;
     uint8_t length_timer;
     uint32_t sample_rate;
@@ -98,8 +98,11 @@ typedef struct fgb_audio_channel_2 {
 
 typedef struct fgb_audio_channel_3 {
     bool enabled;
-    uint8_t sample;
+    int8_t sample; // signed sample for centered waveform (-8..+7 after level)
+    uint8_t length_timer;
+    uint8_t waveform_index;
     uint32_t sample_rate;
+    int timer;
 
     union {
         struct {
@@ -126,12 +129,12 @@ typedef struct fgb_audio_channel_3 {
     union fgb_nrx3 nr33;
     union fgb_nrx4 nr34;
 
-    uint8_t wave_pattern_ram[16];
+    uint8_t wave_ram[16];
 } fgb_audio_channel_3;
 
 typedef struct fgb_audio_channel_4 {
     bool enabled;
-    uint8_t sample;
+    int8_t sample; // signed sample
     uint32_t sample_rate;
 
     union fgb_nrx1 nr41; // No wave_duty member

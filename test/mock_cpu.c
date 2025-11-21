@@ -3,6 +3,7 @@
 #include <tester.h>
 #include <fgb/cpu.h>
 #include <fgb/ppu.h>
+#include <fgb/apu.h>
 
 static fgb_cpu* cpu;
 static int mem_access_count;
@@ -34,7 +35,9 @@ static void mock_cpu_init(size_t tester_ins_mem_size, uint8_t* tester_ins_mem) {
         .data_size = tester_ins_mem_size
     };
 
-    cpu = fgb_cpu_create_with(NULL, fgb_ppu_create(), &ops);
+    fgb_ppu* ppu = fgb_ppu_create();
+    fgb_apu* apu = fgb_apu_create(48000, NULL, NULL);
+    cpu = fgb_cpu_create_with(NULL, ppu, apu, &ops);
     cpu->force_disable_interrupts = true;
     mem_access_count = 0;
 }

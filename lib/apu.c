@@ -14,7 +14,7 @@
 
 #define ACCUMULATE_SAMPLES(CHANNEL) \
     do { \
-        float raw_sample = apu->channel##CHANNEL##.sample; \
+        const float raw_sample = apu->channel##CHANNEL##.sample; \
         if (apu->nr51.ch##CHANNEL##_l) { \
             left_sample += (raw_sample * (float)apu->nr50.vol_l) / (15.0f * 7.0f); \
         } \
@@ -91,8 +91,14 @@ void fgb_apu_tick(fgb_apu* apu) {
 
         ACCUMULATE_SAMPLES(1);
         ACCUMULATE_SAMPLES(2);
+        ACCUMULATE_SAMPLES(3);
+        //ACCUMULATE_SAMPLES(4); // not implemented yet
 
-        // TODO: Repeat for other channels
+        // Simple soft clip to [-1, 1]
+        if (left_sample > 1.0f) left_sample = 1.0f;
+        if (left_sample < -1.0f) left_sample = -1.0f;
+        if (right_sample > 1.0f) right_sample = 1.0f;
+        if (right_sample < -1.0f) right_sample = -1.0f;
 
         apu->sample_buffer[apu->sample_count * 2 + 0] = left_sample;
         apu->sample_buffer[apu->sample_count * 2 + 1] = right_sample;
@@ -177,6 +183,13 @@ void fgb_apu_write(fgb_apu* apu, uint16_t addr, uint8_t value) {
         break;
     case 0xFF26:
         apu->nr52.apu_en = (value >> 7) & 1;
+        if (!apu->nr52.apu_en) {
+            // When APU is disabled, all channels are disabled and length timers reset.
+            apu->channel1.enabled = false;
+            apu->channel2.enabled = false;
+            apu->channel3.enabled = false;
+            apu->channel4.enabled = false;
+        }
         break;
     default:
         break;
