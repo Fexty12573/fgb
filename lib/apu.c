@@ -92,7 +92,7 @@ void fgb_apu_tick(fgb_apu* apu) {
         ACCUMULATE_SAMPLES(1);
         ACCUMULATE_SAMPLES(2);
         ACCUMULATE_SAMPLES(3);
-        //ACCUMULATE_SAMPLES(4); // not implemented yet
+        ACCUMULATE_SAMPLES(4);
 
         // Simple soft clip to [-1, 1]
         if (left_sample > 1.0f) left_sample = 1.0f;

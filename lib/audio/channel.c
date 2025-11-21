@@ -10,6 +10,7 @@
 #define PERIOD_LOW(period) ((period) & 0xFF)
 #define PERIOD_HIGH(period) (((period) >> 8) & 0x07)
 #define WAVEFORM_SAMPLE(WAVE_RAM, INDEX) (((INDEX) & 1) ? ((WAVE_RAM)[(INDEX) >> 1] & 0x0F) : (((WAVE_RAM)[(INDEX) >> 1] >> 4) & 0x0F))
+#define SETBIT(DST, BIT, VAL) (((DST) & ~(1 << (BIT))) | ((VAL) << (BIT)))
 
 static const uint8_t s_waveforms[DUTY_CYCLE_COUNT][WAVEFORM_LENGTH] = {
     [DUTY_CYCLE_12_5] = {0, 0, 0, 0, 0, 0, 0, 1}, // 12.5%
@@ -24,6 +25,8 @@ static const uint8_t s_ch3_output_level_shift[4] = {
     [2] = 1, // 50%
     [3] = 2, // 25%
 };
+
+static const int s_ch4_divisors[8] = { 8, 16, 32, 48, 64, 80, 96, 112 };
 
 static inline int max_int(int a, int b) {
     return a > b ? a : b;
@@ -79,6 +82,22 @@ void fgb_audio_channel_3_tick(fgb_audio_channel_3* ch) {
 }
 
 void fgb_audio_channel_4_tick(fgb_audio_channel_4* ch) {
+    if (ch->timer-- <= 0) {
+        ch->timer = s_ch4_divisors[ch->nr43.clk_div] << ch->nr43.clk_shift;
+
+        const uint8_t bit = ~((ch->lfsr & 1) ^ ((ch->lfsr >> 1) & 1));
+        ch->lfsr = SETBIT(ch->lfsr, 15, bit);
+
+        if (ch->nr43.lfsr_width == 1) {
+            // 7-bit LFSR width
+            ch->lfsr = SETBIT(ch->lfsr, 7, bit);
+        }
+
+        ch->lfsr >>= 1;
+
+        // Lowest bit INVERTED
+        ch->sample = (ch->lfsr & 1) ? -ch->envelope.volume : ch->envelope.volume;
+    }
 }
 
 void fgb_audio_channel_1_fs_tick(fgb_audio_channel_1* ch, uint8_t step) {
@@ -176,6 +195,29 @@ void fgb_audio_channel_4_fs_tick(fgb_audio_channel_4* ch, uint8_t step) {
     if (!ch->enabled) {
         return;
     }
+
+    if (IS_256HZ_TICK(step) && ch->nr44.length_en && ch->length_timer > 0) {
+        ch->length_timer--;
+        if (ch->length_timer == 0) {
+            ch->enabled = false;
+        }
+    }
+
+    if (IS_64HZ_TICK(step) && !ch->envelope.done) {
+        if (ch->envelope.timer-- <= 0) {
+            ch->envelope.timer = ch->nr42.pace ? ch->nr42.pace : 8;
+
+            if (ch->nr42.env_dir && ch->envelope.volume < 15) {
+                ch->envelope.volume++;
+            } else if (!ch->nr42.env_dir && ch->envelope.volume > 0) {
+                ch->envelope.volume--;
+            }
+
+            if (ch->envelope.volume == 0 || ch->envelope.volume == 15) {
+                ch->envelope.done = true;
+            }
+        }
+    }
 }
 
 uint8_t fgb_audio_channel_1_read(const fgb_audio_channel_1* ch, uint16_t addr) {
@@ -233,7 +275,18 @@ uint8_t fgb_audio_channel_3_read(const fgb_audio_channel_3* ch, uint16_t addr) {
 }
 
 uint8_t fgb_audio_channel_4_read(const fgb_audio_channel_4* ch, uint16_t addr) {
-    return 0xFF;
+    switch (addr) {
+    case 0xFF20:
+        return ch->nr41.value & 0xC0; // Upper 2 bits only, init_length_timer is write-only
+    case 0xFF21:
+        return ch->nr42.value;
+    case 0xFF22:
+        return ch->nr43.value;
+    case 0xFF23:
+        return ch->nr44.value & 0x78; // Bits 3-6 only, others are write-only
+    default:
+        return 0xFF;
+    }
 }
 
 void fgb_audio_channel_1_write(fgb_audio_channel_1* ch, uint16_t addr, uint8_t value) {
@@ -279,9 +332,6 @@ void fgb_audio_channel_1_write(fgb_audio_channel_1* ch, uint16_t addr, uint8_t v
 
             ch->timer = fgb_period_to_timer(MAKE_PERIOD(ch->nr13, ch->nr14), 2);
             ch->waveform_index = 0;
-
-            // TODO:
-            // - Reset volume
         }
         break;
     default:
@@ -315,9 +365,6 @@ void fgb_audio_channel_2_write(fgb_audio_channel_2* ch, uint16_t addr, uint8_t v
 
             ch->timer = fgb_period_to_timer(MAKE_PERIOD(ch->nr23, ch->nr24), 2);
             ch->waveform_index = 0;
-
-            // TODO:
-            // - Reset volume
         }
         break;
     default:
@@ -356,9 +403,6 @@ void fgb_audio_channel_3_write(fgb_audio_channel_3* ch, uint16_t addr, uint8_t v
 
             ch->timer = fgb_period_to_timer(MAKE_PERIOD(ch->nr33, ch->nr34), 1);
             ch->waveform_index = 1; // CH3 starts at index 1 on trigger
-
-            // TODO:
-            // - Reset volume
         }
         break;
     default:
@@ -367,5 +411,34 @@ void fgb_audio_channel_3_write(fgb_audio_channel_3* ch, uint16_t addr, uint8_t v
 }
 
 void fgb_audio_channel_4_write(fgb_audio_channel_4* ch, uint16_t addr, uint8_t value) {
+    switch (addr) {
+    case 0xFF16:
+        ch->nr41.value = value;
+        ch->length_timer = 64 - ch->nr41.init_length_timer;
+        break;
+    case 0xFF17:
+        ch->nr42.value = value;
+        break;
+    case 0xFF18:
+        ch->nr43.value = value;
+        break;
+    case 0xFF19:
+        ch->nr44.value = value;
+        if (ch->nr44.trigger) {
+            ch->enabled = true;
+            if (ch->length_timer == 0) {
+                ch->length_timer = 64 - ch->nr41.init_length_timer;
+            }
 
+            ch->envelope.volume = ch->nr42.init_vol;
+            ch->envelope.timer = ch->nr42.pace ? ch->nr42.pace : 8;
+            ch->envelope.done = false;
+
+            ch->timer = s_ch4_divisors[ch->nr43.clk_div] << ch->nr43.clk_shift;
+            ch->lfsr = 0x7FFF;
+        }
+        break;
+    default:
+        break;
+    }
 }
