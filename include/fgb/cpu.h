@@ -1,6 +1,7 @@
 #ifndef FGB_CPU_H
 #define FGB_CPU_H
 
+#include "apu.h"
 #include "mmu.h"
 #include "timer.h"
 #include "io.h"
@@ -103,6 +104,7 @@ typedef struct fgb_cpu {
     fgb_timer timer;
     fgb_io io;
     fgb_ppu* ppu;
+    fgb_apu* apu;
 
     bool test_mode;
     
@@ -133,8 +135,8 @@ typedef struct fgb_cpu {
 } fgb_cpu;
 
 
-fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu);
-fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, const fgb_mmu_ops* mmu_ops);
+fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu);
+fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu, const fgb_mmu_ops* mmu_ops);
 void fgb_cpu_destroy(fgb_cpu* cpu);
 
 void fgb_cpu_tick(fgb_cpu* cpu); // Tick 1 T-cycle

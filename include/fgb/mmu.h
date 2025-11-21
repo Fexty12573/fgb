@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "apu.h"
 #include "cart.h"
 #include "timer.h"
 #include "io.h"
@@ -25,6 +26,7 @@ typedef struct fgb_mmu {
         };
     };
 
+    fgb_apu* apu;
     fgb_cart* cart;
     fgb_timer* timer;
     fgb_io* io;

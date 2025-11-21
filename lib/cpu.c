@@ -62,7 +62,7 @@ static const struct fgb_init_value fgb_init_table[] = {
 };
 
 
-fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu) {
+fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu) {
     fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
     if (!cpu) {
         log_error("Failed to allocate CPU");
@@ -73,6 +73,7 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu) {
 
     memset(cpu, 0, sizeof(fgb_cpu));
 
+    cpu->apu = apu;
     cpu->ppu = ppu;
     fgb_ppu_set_cpu(ppu, cpu);
 
@@ -85,7 +86,7 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu) {
     return cpu;
 }
 
-fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, const fgb_mmu_ops* mmu_ops) {
+fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu, const fgb_mmu_ops* mmu_ops) {
     fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
     if (!cpu) {
         log_error("Failed to allocate CPU");
@@ -94,6 +95,7 @@ fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, const fgb_mmu_ops* mm
 
     memset(cpu, 0, sizeof(fgb_cpu));
 
+    cpu->apu = apu;
     cpu->ppu = ppu;
     fgb_ppu_set_cpu(ppu, cpu);
 
@@ -101,6 +103,7 @@ fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, const fgb_mmu_ops* mm
     fgb_io_init(&cpu->io, cpu);
     fgb_mmu_init(&cpu->mmu, cart, cpu, mmu_ops);
     fgb_cpu_reset(cpu);
+    fgb_ppu_reset(ppu);
 
     return cpu;
 }
@@ -120,9 +123,10 @@ void fgb_cpu_tick(fgb_cpu *cpu) {
 
     fgb_timer_tick(&cpu->timer);
     fgb_ppu_tick(cpu->ppu);
+    fgb_apu_tick(cpu->apu);
     fgb_cart_tick(cpu->mmu.cart);
+
     // TODO:
-    // - Tick APU
     // - Maybe extract DMA handling from PPU tick?
     // - Maybe tick serial?
 }

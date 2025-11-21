@@ -16,6 +16,8 @@
 
 #include <ulog.h>
 
+#include "audio.h"
+
 size_t file_size(FILE* f) {
     fseek(f, 0, SEEK_END);
     const size_t size = ftell(f);
@@ -25,6 +27,7 @@ size_t file_size(FILE* f) {
 
 #define DISASM_LINES 20
 #define WINDOW_SCALE 2
+#define AUDIO_SAMPLE_RATE 44100
 
 struct app {
     fgb_emu* emu;
@@ -132,7 +135,7 @@ static fgb_emu* emu_init(const char* rom_path) {
     fread(data, 1, size, f);
     fclose(f);
 
-    fgb_emu* emu = fgb_emu_create(data, size);
+    fgb_emu* emu = fgb_emu_create(data, size, AUDIO_SAMPLE_RATE, fgb_audio_push_samples, fgb_audio_get_driver());
     free(data);
 
     return emu;
@@ -448,7 +451,7 @@ static void render_debug_options(void) {
 
     igPopStyleColor(1);
 
-	fgb_cpu* volatile cpu = g_app.emu->cpu;
+    fgb_cpu* volatile cpu = g_app.emu->cpu;
 
     igPushID_Str("CPU_UI");
 
@@ -543,9 +546,9 @@ static void render_debug_options(void) {
         igPopID(); // Regs
 
         if (memcmp(&before_regs, &regs, sizeof(fgb_cpu_regs)) != 0) {
-			// Registers were modified, apply changes
+            // Registers were modified, apply changes
             cpu->regs = regs;
-		}
+        }
 
         // Right column: flags + misc
         igTableSetColumnIndex(1);
@@ -553,7 +556,7 @@ static void render_debug_options(void) {
         igSeparatorText("Flags");
         igPushID_Str("Flags");
 
-		bool c = fgb_cpu_get_flag(cpu, CPU_FLAG_C);
+        bool c = fgb_cpu_get_flag(cpu, CPU_FLAG_C);
         bool h = fgb_cpu_get_flag(cpu, CPU_FLAG_H);
         bool n = fgb_cpu_get_flag(cpu, CPU_FLAG_N);
         bool z = fgb_cpu_get_flag(cpu, CPU_FLAG_Z);
@@ -572,7 +575,7 @@ static void render_debug_options(void) {
 
         igSeparatorText("Misc");
 
-		bool ime = cpu->ime;
+        bool ime = cpu->ime;
         if (igCheckbox("IME", &ime)) {
             cpu->ime = ime;
         }
@@ -621,9 +624,9 @@ static void render_debug_options(void) {
         }
 
         if (modified) {
-			// Timer was modified, apply changes
+            // Timer was modified, apply changes
             cpu->timer = timer;
-		}
+        }
 
         igEndTable();
     }
@@ -644,9 +647,9 @@ static void render_debug_options(void) {
 }
 
 static void render_ppu_options(void) {
-	igBegin("PPU", NULL, ImGuiWindowFlags_None);
+    igBegin("PPU", NULL, ImGuiWindowFlags_None);
 
-	fgb_ppu* ppu = g_app.emu->ppu;
+    fgb_ppu* ppu = g_app.emu->ppu;
 
     if (igBeginTable("ppu_table", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV, (ImVec2) { 0, 0 }, 0.0f)) {
         igTableNextRow(0, 0);
@@ -657,7 +660,7 @@ static void render_ppu_options(void) {
         ImVec4 color;
         igColorConvertU32ToFloat4(&color, ppu->debug.window_color);
         if (igColorEdit4("Window Color", &color.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar)) {
-			ppu->debug.window_color = igColorConvertFloat4ToU32(color);
+            ppu->debug.window_color = igColorConvertFloat4ToU32(color);
         }
 
         igTableNextRow(0, 0);
@@ -675,12 +678,12 @@ static void render_ppu_options(void) {
         igTextUnformatted("-----", NULL);
 
         igTableNextRow(0, 0);
-		igTableSetColumnIndex(0);
+        igTableSetColumnIndex(0);
 
         struct { uint8_t x, y; } window_pos = {
             .x = ppu->window_pos.x,
             .y = ppu->window_pos.y,
-		};
+        };
 
         igSetNextItemWidth(200.0f);
         if (igInputScalarN("Window Pos", ImGuiDataType_U8, &window_pos.x, 2, NULL, NULL, "%d", ImGuiInputTextFlags_None)) {
@@ -691,31 +694,31 @@ static void render_ppu_options(void) {
         igEndTable();
 
         if (igCollapsingHeader_BoolPtr("Front Buffer", NULL, ImGuiTreeNodeFlags_None)) {
-	        igImage((ImTextureRef){NULL, g_app.framebuffer_textures[0]},
-	            (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
-	            (ImVec2){0, 0},
-	            (ImVec2){1, 1}
-			);
+            igImage((ImTextureRef){NULL, g_app.framebuffer_textures[0]},
+                (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
+                (ImVec2){0, 0},
+                (ImVec2){1, 1}
+            );
         }
 
         if (igCollapsingHeader_BoolPtr("Back Buffer", NULL, ImGuiTreeNodeFlags_None)) {
-	        igImage((ImTextureRef){NULL, g_app.framebuffer_textures[1]},
-	            (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
-	            (ImVec2){0, 0},
-	            (ImVec2){1, 1}
-			);
+            igImage((ImTextureRef){NULL, g_app.framebuffer_textures[1]},
+                (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
+                (ImVec2){0, 0},
+                (ImVec2){1, 1}
+            );
         }
 
         if (igCollapsingHeader_BoolPtr("Tile Map 0 ($9800)", NULL, ImGuiTreeNodeFlags_None)) {
             for (int y = 0; y < 32; y++) {
                 for (int x = 0; x < 32; x++) {
-					const uint8_t tile_index = ppu->vram[0x1800 + y * 32 + x];
+                    const uint8_t tile_index = ppu->vram[0x1800 + y * 32 + x];
                     float r, g, b;
                     igColorConvertHSVtoRGB((float)tile_index / 255.0f, 1.0f, 1.0f, &r, &g, &b);
                     igTextColored((ImVec4) { r, g, b, 1 }, "%02X", tile_index);
                     if (igBeginItemTooltip()) {
-						igText("(%d, %d)", x, y);
-						igEndTooltip();
+                        igText("(%d, %d)", x, y);
+                        igEndTooltip();
                     }
                     igSameLine(0, -1);
                 }
@@ -732,8 +735,8 @@ static void render_ppu_options(void) {
                     igColorConvertHSVtoRGB((float)tile_index / 255.0f, 1.0f, 1.0f, &r, &g, &b);
                     igTextColored((ImVec4) { r, g, b, 1 }, "%02X", tile_index);
                     if (igBeginItemTooltip()) {
-						igText("(%d, %d)", x, y);
-						igEndTooltip();
+                        igText("(%d, %d)", x, y);
+                        igEndTooltip();
                     }
                     igSameLine(0, -1);
                 }
@@ -741,7 +744,7 @@ static void render_ppu_options(void) {
                 igNewLine();
             }
         }
-	}
+    }
 
     igEnd();
 }
@@ -979,6 +982,10 @@ int main(int argc, char** argv) {
         printf("Could not open trace log file. Exiting\n");
         return 1;
     }
+
+    if (!fgb_audio_init(AUDIO_SAMPLE_RATE, AUDIO_SAMPLE_RATE)) {
+        return 1;
+    }
     
     g_app.emu = emu_init(argv[1]);
     if (!g_app.emu) {
@@ -1008,7 +1015,7 @@ int main(int argc, char** argv) {
     uint32_t va, vb, ib;
     fgb_create_quad(&va, &vb, &ib);
 
-	g_app.framebuffer_textures[0] = screen_texture; // Front buffer
+    g_app.framebuffer_textures[0] = screen_texture; // Front buffer
     g_app.framebuffer_textures[1] = fgb_create_screen_texture(); // Back buffer
 
     glfwSetKeyCallback(window, key_callback);
@@ -1109,7 +1116,7 @@ int main(int argc, char** argv) {
         render_tilesets(tiles_per_row, block_textures);
         render_line_sprites();
         render_debug_options();
-		render_ppu_options();
+        render_ppu_options();
 
         igRender();
 
