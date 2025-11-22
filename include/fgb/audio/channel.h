@@ -157,6 +157,11 @@ typedef struct fgb_audio_channel_4 {
     union fgb_nrx4 nr44; // No period_high member
 } fgb_audio_channel_4;
 
+void fgb_audio_channel_1_reset(fgb_audio_channel_1* ch);
+void fgb_audio_channel_2_reset(fgb_audio_channel_2* ch);
+void fgb_audio_channel_3_reset(fgb_audio_channel_3* ch);
+void fgb_audio_channel_4_reset(fgb_audio_channel_4* ch);
+
 // T-Cycle tick functions
 void fgb_audio_channel_1_tick(fgb_audio_channel_1* ch);
 void fgb_audio_channel_2_tick(fgb_audio_channel_2* ch);

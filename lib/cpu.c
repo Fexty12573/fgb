@@ -38,27 +38,6 @@ static const struct fgb_init_value fgb_init_table[] = {
     { 0xFF00, 0xCF }, // P1
     { 0xFF01, 0x00 }, // SB
     { 0xFF02, 0x7E }, // SC
-    { 0xFF10, 0x80 }, // NR10
-    { 0xFF11, 0xBF }, // NR11
-    { 0xFF12, 0xF3 }, // NR12
-    { 0xFF13, 0xFF }, // NR13
-    { 0xFF14, 0xBF }, // NR14
-    { 0xFF16, 0x3F }, // NR21
-    { 0xFF17, 0x00 }, // NR22
-    { 0xFF18, 0xFF }, // NR23
-    { 0xFF19, 0xBF }, // NR24
-    { 0xFF1A, 0x7F }, // NR30
-    { 0xFF1B, 0xFF }, // NR31
-    { 0xFF1C, 0x9F }, // NR32
-    { 0xFF1D, 0xFF }, // NR33
-    { 0xFF1E, 0xBF }, // NR34
-    { 0xFF20, 0xFF }, // NR41
-    { 0xFF21, 0x00 }, // NR42
-    { 0xFF22, 0x00 }, // NR43
-    { 0xFF23, 0xBF }, // NR44
-    { 0xFF24, 0x77 }, // NR50
-    { 0xFF25, 0xF3 }, // NR51
-    { 0xFF26, 0xF1 }, // NR52
 };
 
 
@@ -82,6 +61,7 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu) {
     fgb_mmu_init(&cpu->mmu, cart, cpu, NULL);
     fgb_cpu_reset(cpu);
     fgb_ppu_reset(ppu);
+    fgb_apu_reset(apu);
 
     return cpu;
 }
@@ -104,6 +84,7 @@ fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu, const f
     fgb_mmu_init(&cpu->mmu, cart, cpu, mmu_ops);
     fgb_cpu_reset(cpu);
     fgb_ppu_reset(ppu);
+    fgb_apu_reset(apu);
 
     return cpu;
 }

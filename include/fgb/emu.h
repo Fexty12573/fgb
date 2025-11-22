@@ -21,7 +21,7 @@ fgb_emu* fgb_emu_create(const uint8_t* cart_data, size_t cart_size, uint32_t apu
 void fgb_emu_destroy(fgb_emu* emu);
 void fgb_emu_reset(fgb_emu* emu);
 
-void fgb_emu_set_log_level(fgb_emu* emu, enum ulog_level level);
+void fgb_emu_set_log_level(fgb_emu* emu, int level);
 
 void fgb_emu_press_button(fgb_emu* emu, enum fgb_button button);
 void fgb_emu_release_button(fgb_emu* emu, enum fgb_button button);

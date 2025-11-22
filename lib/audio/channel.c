@@ -36,6 +36,40 @@ static inline int fgb_period_to_timer(uint16_t period, int shift) {
     return max_int(2048 - (int)period, 1) << shift;
 }
 
+void fgb_audio_channel_1_reset(fgb_audio_channel_1* ch) {
+    ch->nr10.value = 0x80;
+    ch->nr11.value = 0xBF;
+    ch->nr12.value = 0xF3;
+    ch->nr13.value = 0xFF;
+    ch->nr14.value = 0xBF;
+}
+
+void fgb_audio_channel_2_reset(fgb_audio_channel_2* ch) {
+    ch->nr21.value = 0x3F;
+    ch->nr22.value = 0x00;
+    ch->nr23.value = 0xFF;
+    ch->nr24.value = 0xBF;
+}
+
+void fgb_audio_channel_3_reset(fgb_audio_channel_3* ch) {
+    ch->nr30.value = 0x7F;
+    ch->nr31.value = 0xFF;
+    ch->nr32.value = 0x9F;
+    ch->nr33.value = 0xFF;
+    ch->nr34.value = 0xBF;
+
+    for (size_t i = 0; i < sizeof(ch->wave_ram); i++) {
+        ch->wave_ram[i] = 0x00;
+    }
+}
+
+void fgb_audio_channel_4_reset(fgb_audio_channel_4* ch) {
+    ch->nr41.value = 0xFF;
+    ch->nr42.value = 0x00;
+    ch->nr43.value = 0x00;
+    ch->nr44.value = 0xBF;
+}
+
 void fgb_audio_channel_1_tick(fgb_audio_channel_1* ch) {
     if (ch->timer-- <= 0) {
         ch->timer = fgb_period_to_timer(MAKE_PERIOD(ch->nr13, ch->nr14), 2);

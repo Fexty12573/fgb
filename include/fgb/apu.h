@@ -70,6 +70,7 @@ typedef struct fgb_apu {
 
 fgb_apu* fgb_apu_create(uint32_t sample_rate, fgb_apu_sample_callback sample_callback, void* userdata);
 void fgb_apu_destroy(fgb_apu* apu);
+void fgb_apu_reset(fgb_apu* apu);
 void fgb_apu_tick(fgb_apu* apu);
 
 uint8_t fgb_apu_read(const fgb_apu* apu, uint16_t addr);

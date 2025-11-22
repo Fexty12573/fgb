@@ -60,6 +60,27 @@ void fgb_apu_destroy(fgb_apu* apu) {
     free(apu);
 }
 
+void fgb_apu_reset(fgb_apu* apu) {
+    memset(&apu->channel1, 0, sizeof(fgb_audio_channel_1));
+    memset(&apu->channel2, 0, sizeof(fgb_audio_channel_2));
+    memset(&apu->channel3, 0, sizeof(fgb_audio_channel_3));
+    memset(&apu->channel4, 0, sizeof(fgb_audio_channel_4));
+
+    fgb_audio_channel_1_reset(&apu->channel1);
+    fgb_audio_channel_2_reset(&apu->channel2);
+    fgb_audio_channel_3_reset(&apu->channel3);
+    fgb_audio_channel_4_reset(&apu->channel4);
+
+    apu->channel1.sample_rate = apu->sample_rate;
+    apu->channel2.sample_rate = apu->sample_rate;
+    apu->channel3.sample_rate = apu->sample_rate;
+    apu->channel4.sample_rate = apu->sample_rate;
+
+    apu->nr50.value = 0x77;
+    apu->nr51.value = 0xF3;
+    apu->nr52.value = 0xF1;
+}
+
 void fgb_apu_tick(fgb_apu* apu) {
     if (!apu->nr52.apu_en) {
         return;

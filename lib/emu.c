@@ -61,9 +61,10 @@ void fgb_emu_reset(fgb_emu* emu) {
 
     fgb_cpu_reset(emu->cpu);
     fgb_ppu_reset(emu->ppu);
+    fgb_apu_reset(emu->apu);
 }
 
-void fgb_emu_set_log_level(fgb_emu* emu, enum ulog_level level) {
+void fgb_emu_set_log_level(fgb_emu* emu, int level) {
     if (!emu || !emu->cpu) {
         log_error("Emulator or CPU not initialized");
         return;
