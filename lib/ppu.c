@@ -460,7 +460,6 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
         break;
 
     default:
-        log_warn("Unknown address for PPU write: 0x%04X", addr);
         break;
     }
 }
@@ -506,7 +505,6 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
         return ppu->window_pos.x;
 
     default:
-        log_warn("Unknown address for PPU read: 0x%04X", addr);
         break;
     }
 

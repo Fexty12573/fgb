@@ -107,6 +107,7 @@ typedef struct fgb_cart {
     uint8_t* ram;
     size_t rom_size;
     uint8_t rom_bank;
+    uint8_t rom_bank_high;
     uint8_t ram_bank;
     uint8_t* rom_banks[FGB_CART_MAX_ROM_BANKS];
     uint8_t* ram_banks[FGB_CART_MAX_RAM_BANKS];
@@ -118,6 +119,8 @@ typedef struct fgb_cart {
     } rtc;
     bool ram_enabled;
     bool has_ram_battery;
+    bool has_rumble;
+    bool rumble_enabled;
     uint32_t ram_size_bytes;
     uint8_t rom_bank_mask;
     enum fgb_cart_mode mode;
