@@ -17,6 +17,7 @@
 #include <ulog.h>
 
 #include "audio.h"
+#include <fgb/cart.h>
 
 size_t file_size(FILE* f) {
     fseek(f, 0, SEEK_END);
@@ -27,11 +28,12 @@ size_t file_size(FILE* f) {
 
 #define DISASM_LINES 20
 #define WINDOW_SCALE 2
-#define APU_SAMPLE_RATE 48000 // 1.048576 MHz
+#define APU_SAMPLE_RATE 48000 // 48 kHz
 #define AUDIO_SAMPLE_RATE 48000 // 48 kHz
 
 struct app {
     fgb_emu* emu;
+    char* rom_path;
     bool running;
     bool display_screen;
     int block_to_display;
@@ -69,10 +71,49 @@ struct app g_app = {
     .disasm_buffer_ptrs = { NULL },
 };
 
-static int emu_run(void* arg);
 static bool emu_start(void);
 static bool emu_stop(void);
-static void configure_emu(void);
+static void emu_configure(void);
+static void emu_try_save_ram(void);
+
+static char* last_of(char* str, char c) {
+    for (size_t i = strlen(str) - 1; i > 0; i--) {
+        if (str[i] == c) {
+            return &str[i];
+        }
+    }
+
+    if (str[0] == c) {
+        return str;
+    }
+
+    return NULL;
+}
+
+static bool endswith(const char* str, const char* suffix) {
+    if (!str || !suffix) {
+        return false;
+    }
+
+    const size_t str_len = strlen(str);
+    const size_t suffix_len = strlen(suffix);
+    if (suffix_len > str_len) {
+        return false;
+    }
+
+    return strcmp(str + str_len - suffix_len, suffix) == 0;
+}
+
+static char* save_path_from_rom(char* rom_path) {
+    const char* ext = last_of(rom_path, '.');
+    const size_t len = ext ? ext - rom_path : strlen(rom_path);
+    char* save_path = malloc(len + 5); // +5 for ".sav" and null terminator
+
+    strcpy(save_path, rom_path);
+    strcpy(save_path + len, ".sav");
+
+    return save_path;
+}
 
 static void set_disasm_addr(uint16_t addr) {
     g_app.disasm_addr = addr;
@@ -90,8 +131,8 @@ static void on_breakpoint(fgb_cpu* cpu, size_t bp, uint16_t addr) {
         set_disasm_addr(addr);
     }
 
-    fflush(stdout);
-    fflush(stderr);
+    (void)fflush(stdout);
+    (void)fflush(stderr);
 }
 
 static void on_step(fgb_cpu* cpu) {
@@ -111,18 +152,23 @@ static void on_step(fgb_cpu* cpu) {
         set_disasm_addr(pc);
     }
 
-    fflush(stdout);
-    fflush(stderr);
+    (void)fflush(stdout);
+    (void)fflush(stderr);
 }
 
 static void log_cpu_trace(fgb_cpu* cpu, uint16_t addr, uint32_t depth, const char* disasm) {
     (void)cpu;
-    fprintf(g_app.trace_file, "0x%04X:%*s%s\n", addr, 2 * (depth + 1), "", disasm);
+    (void)fprintf(g_app.trace_file, "0x%04X:%*s%s\n", addr, 2 * (depth + 1), "", disasm);
 }
 
 static fgb_emu* emu_init(const char* rom_path) {
+    if (!endswith(rom_path, ".gb")) {
+        log_error("Unsupported ROM format: %s (only .gb supported)", rom_path);
+        exit(1);
+    }
+
     FILE* f;
-    const errno_t err = fopen_s(&f, rom_path, "rb");
+    errno_t err = fopen_s(&f, rom_path, "rb");
     if (err) {
         printf("Failed to open file %s\n", rom_path);
         exit(1);
@@ -130,11 +176,43 @@ static fgb_emu* emu_init(const char* rom_path) {
 
     const size_t size = file_size(f);
     uint8_t* data = malloc(size);
+    if (!data) {
+        printf("Failed to allocate memory for ROM\n");
+        fclose(f);
+        exit(1);
+    }
+
     fread(data, 1, size, f);
     fclose(f);
 
     fgb_emu* emu = fgb_emu_create(data, size, APU_SAMPLE_RATE, fgb_audio_push_samples, fgb_audio_get_driver());
     free(data);
+
+    g_app.rom_path = _strdup(rom_path);
+
+    // Try to load battery-backed RAM
+    char* save_path = save_path_from_rom(g_app.rom_path);
+    err = fopen_s(&f, save_path, "rb");
+    free(save_path);
+
+    if (err) {
+        // File does not exist, that's fine
+        return emu;
+    }
+
+    const size_t save_size = file_size(f);
+    uint8_t* save_data = malloc(save_size);
+    if (!save_data) {
+        printf("Failed to allocate memory for save data\n");
+        fclose(f);
+        return emu; // Not really a fatal error so just continue
+    }
+
+    fread(save_data, 1, save_size, f);
+    fclose(f);
+
+    fgb_cart_load_battery_buffered_ram(emu->cart, save_data, save_size);
+    free(save_data);
 
     return emu;
 }
@@ -842,7 +920,7 @@ static void drop_callback(GLFWwindow* window, int count, const char** paths) {
     log_info("Loading ROM: %s", paths[0]);
     g_app.emu = emu_init(paths[0]);
 
-    configure_emu();
+    emu_configure();
     emu_start();
 }
 
@@ -900,7 +978,7 @@ bool emu_stop(void) {
     return true;
 }
 
-void configure_emu(void) {
+void emu_configure(void) {
     set_disasm_addr(0x100);
     fgb_cpu_set_bp_callback(g_app.emu->cpu, on_breakpoint);
     fgb_cpu_set_step_callback(g_app.emu->cpu, on_step);
@@ -911,7 +989,24 @@ void configure_emu(void) {
     fgb_emu_set_log_level(g_app.emu, LOG_DEBUG);
     g_app.emu->cpu->trace_count = 0;
 
-    fgb_ppu_set_color_mode(g_app.emu->ppu, PPU_COLOR_MODE_NORMAL);
+    fgb_ppu_set_color_mode(g_app.emu->ppu, PPU_COLOR_MODE_TINTED);
+}
+
+void emu_try_save_ram(void) {
+    const uint8_t* ram = fgb_cart_get_battery_buffered_ram(g_app.emu->cart);
+    if (ram) {
+        char* save_path = save_path_from_rom(g_app.rom_path);
+        FILE* file = fopen(save_path, "wb");
+        if (!file) {
+            log_error("Could not open save file for writing: %s", save_path);
+            return;
+        }
+
+        free(save_path);
+
+        fwrite(ram, 1, fgb_cart_get_ram_size(g_app.emu->cart), file);
+        fclose(file);
+    }
 }
 
 int main(int argc, char** argv) {
@@ -956,7 +1051,7 @@ int main(int argc, char** argv) {
         g_app.disasm_buffer_ptrs[i] = g_app.disasm_buffer[i];
     }
 
-    configure_emu();
+    emu_configure();
 
     glDebugMessageCallback(gl_debug_callback, NULL);
 
@@ -1102,12 +1197,14 @@ int main(int argc, char** argv) {
 
     g_app.running = false;
 
+    emu_try_save_ram();
     fgb_emu_destroy(g_app.emu);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
 
     fclose(g_app.trace_file);
+    free(g_app.rom_path);
 
     igDestroyContext(NULL);
 

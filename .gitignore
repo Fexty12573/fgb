@@ -4,3 +4,4 @@ build/
 *.log
 imgui.ini
 data/test-roms/
+*.sav

@@ -79,18 +79,20 @@ fgb_cart* fgb_cart_load(const uint8_t* data, size_t size) {
         cart->read = fgb_cart_read_rom_only;
         cart->write = fgb_cart_write_rom_only;
         break;
+    case CART_TYPE_MBC1_RAM_BATTERY:
+        cart->has_ram_battery = true;
     case CART_TYPE_MBC1:
     case CART_TYPE_MBC1_RAM:
-    case CART_TYPE_MBC1_RAM_BATTERY:
         cart->read = fgb_cart_read_mbc1;
         cart->write = fgb_cart_write_mbc1;
         cart->rom_bank = 1; // MBC1 starts with bank 1 selected
         break;
     case CART_TYPE_MBC3_RAM_BATTERY:
+    case CART_TYPE_MBC3_TIMER_RAM_BATTERY:
+        cart->has_ram_battery = true;
     case CART_TYPE_MBC3_TIMER_BATTERY:
     case CART_TYPE_MBC3:
     case CART_TYPE_MBC3_RAM:
-    case CART_TYPE_MBC3_TIMER_RAM_BATTERY:
         cart->read = fgb_cart_read_mbc3;
         cart->write = fgb_cart_write_mbc3;
         cart->tick = fgb_cart_tick_mbc3;
@@ -123,6 +125,29 @@ void fgb_cart_destroy(fgb_cart* cart) {
     free(cart->rom);
     free(cart->ram);
     free(cart);
+}
+
+const uint8_t* fgb_cart_get_battery_buffered_ram(const fgb_cart* cart) {
+    if (cart->has_ram_battery && cart->ram) {
+        return cart->ram;
+    }
+
+    return NULL;
+}
+
+bool fgb_cart_load_battery_buffered_ram(const fgb_cart* cart, const uint8_t* data, size_t size) {
+    if (cart->ram_size_bytes != size) {
+        log_error("Battery RAM size mismatch: expected %zu bytes, got %zu bytes", cart->ram_size_bytes, size);
+        return false;
+    }
+
+    memcpy(cart->ram, data, size);
+
+    return true;
+}
+
+size_t fgb_cart_get_ram_size(const fgb_cart* cart) {
+    return cart->ram_size_bytes;
 }
 
 uint8_t fgb_cart_read(const fgb_cart* cart, uint16_t addr) {

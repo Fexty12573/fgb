@@ -117,6 +117,7 @@ typedef struct fgb_cart {
         uint32_t cycles;
     } rtc;
     bool ram_enabled;
+    bool has_ram_battery;
     uint32_t ram_size_bytes;
     uint8_t rom_bank_mask;
     enum fgb_cart_mode mode;
@@ -127,6 +128,10 @@ typedef struct fgb_cart {
 
 fgb_cart* fgb_cart_load(const uint8_t* data, size_t size);
 void fgb_cart_destroy(fgb_cart* cart);
+
+const uint8_t* fgb_cart_get_battery_buffered_ram(const fgb_cart* cart);
+bool fgb_cart_load_battery_buffered_ram(const fgb_cart* cart, const uint8_t* data, size_t size);
+size_t fgb_cart_get_ram_size(const fgb_cart* cart);
 
 uint8_t fgb_cart_read(const fgb_cart* cart, uint16_t addr);
 void fgb_cart_write(fgb_cart* cart, uint16_t addr, uint8_t value);

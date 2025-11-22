@@ -398,7 +398,7 @@ void fgb_audio_channel_3_write(fgb_audio_channel_3* ch, uint16_t addr, uint8_t v
         if (ch->nr34.trigger) {
             ch->enabled = true;
             if (ch->length_timer == 0) {
-                ch->length_timer = 256;
+                ch->length_timer = 255;
             }
 
             ch->timer = fgb_period_to_timer(MAKE_PERIOD(ch->nr33, ch->nr34), 1);
