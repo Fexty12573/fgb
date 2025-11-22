@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define FGB_CART_MAX_ROM_BANKS 256
+#define FGB_CART_MAX_ROM_BANKS 512
 #define FGB_CART_MAX_RAM_BANKS 16
 #define FGB_CART_ROM_BANK_SIZE 0x4000
 #define FGB_CART_RAM_BANK_SIZE 0x2000
