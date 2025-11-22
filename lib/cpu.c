@@ -135,6 +135,8 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
 
     cpu->interrupt.flags = 0xE1;
     cpu->interrupt.enable = 0x00;
+
+    cpu->mmu.bootrom_mapped = true;
     
     for (size_t i = 0; i < sizeof(fgb_init_table) / sizeof(fgb_init_table[0]); i++) {
         fgb_mmu_write(cpu, fgb_init_table[i].addr, fgb_init_table[i].value);

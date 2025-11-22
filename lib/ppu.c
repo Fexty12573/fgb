@@ -25,7 +25,6 @@
 
 #define TILE_PIXEL(LSB, MSB, X)    (((((MSB) >> (7 - (X))) & 1) << 1) | (((LSB) >> (7 - (X))) & 1))
 
-static void fgb_ppu_render_pixels(fgb_ppu* ppu, int count);
 static void fgb_ppu_do_oam_scan(fgb_ppu* ppu);
 static void fgb_ppu_pixel_fetcher_tick(fgb_ppu* ppu);
 static void fgb_ppu_lcd_push(fgb_ppu* ppu);
@@ -127,6 +126,7 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
     ppu->dma_addr = 0;
     ppu->dma_bytes = 0;
     ppu->dma_cycles = 0;
+    ppu->hblank_cycles = HBLANK_MAX_CYCLES;
 }
 
 const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu) {
