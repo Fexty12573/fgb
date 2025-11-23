@@ -27,7 +27,7 @@ size_t file_size(FILE* f) {
 }
 
 #define DISASM_LINES 20
-#define WINDOW_SCALE 2
+#define WINDOW_SCALE 4
 #define APU_SAMPLE_RATE 48000 // 48 kHz
 #define AUDIO_SAMPLE_RATE 48000 // 48 kHz
 
