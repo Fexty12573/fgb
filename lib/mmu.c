@@ -212,7 +212,7 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
 static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
     // Bootrom
     if (mmu->bootrom_mapped && addr < 0x100) {
-        return dmg0_bootrom[addr];
+        return dmg_bootrom[addr];
     }
 
     // Cart

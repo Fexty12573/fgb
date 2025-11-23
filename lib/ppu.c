@@ -107,10 +107,10 @@ void fgb_ppu_reset(fgb_ppu* ppu) {
     ppu->oam_scan_done = false;
     ppu->reset = false;
     ppu->frames_rendered = 0;
-    ppu->lcd_control.value = 0x91;
+    ppu->lcd_control.value = 0x00;
     ppu->ly = 0;
     ppu->lyc = 0;
-    ppu->stat.value = 0x81;
+    ppu->stat.value = 0x00;
     ppu->scroll.x = 0;
     ppu->scroll.y = 0;
     ppu->window_pos.x = 0;
