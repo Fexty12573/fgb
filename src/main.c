@@ -14,7 +14,10 @@
 #include <cimgui_impl.h>
 #include <string.h>
 
-#include "ulog.h"
+#include <ulog.h>
+
+#include "audio.h"
+#include <fgb/cart.h>
 
 size_t file_size(FILE* f) {
     fseek(f, 0, SEEK_END);
@@ -24,14 +27,15 @@ size_t file_size(FILE* f) {
 }
 
 #define DISASM_LINES 20
-#define WINDOW_SCALE 2
+#define WINDOW_SCALE 4
+#define APU_SAMPLE_RATE 48000 // 48 kHz
+#define AUDIO_SAMPLE_RATE 48000 // 48 kHz
 
 struct app {
     fgb_emu* emu;
-    thrd_t emu_thread;
+    char* rom_path;
     bool running;
     bool display_screen;
-    bool emulate;
     int block_to_display;
     double render_framerate;
     double emu_framerate;
@@ -56,7 +60,6 @@ struct app g_app = {
     .emu = NULL,
     .running = true,
     .display_screen = true,
-    .emulate = true,
     .block_to_display = 0,
     .render_framerate = 0.0,
     .emu_framerate = 0.0,
@@ -68,10 +71,49 @@ struct app g_app = {
     .disasm_buffer_ptrs = { NULL },
 };
 
-static int emu_run(void* arg);
 static bool emu_start(void);
 static bool emu_stop(void);
-static void configure_emu(void);
+static void emu_configure(void);
+static void emu_try_save_ram(void);
+
+static char* last_of(char* str, char c) {
+    for (size_t i = strlen(str) - 1; i > 0; i--) {
+        if (str[i] == c) {
+            return &str[i];
+        }
+    }
+
+    if (str[0] == c) {
+        return str;
+    }
+
+    return NULL;
+}
+
+static bool endswith(const char* str, const char* suffix) {
+    if (!str || !suffix) {
+        return false;
+    }
+
+    const size_t str_len = strlen(str);
+    const size_t suffix_len = strlen(suffix);
+    if (suffix_len > str_len) {
+        return false;
+    }
+
+    return strcmp(str + str_len - suffix_len, suffix) == 0;
+}
+
+static char* save_path_from_rom(char* rom_path) {
+    const char* ext = last_of(rom_path, '.');
+    const size_t len = ext ? ext - rom_path : strlen(rom_path);
+    char* save_path = malloc(len + 5); // +5 for ".sav" and null terminator
+
+    strcpy(save_path, rom_path);
+    strcpy(save_path + len, ".sav");
+
+    return save_path;
+}
 
 static void set_disasm_addr(uint16_t addr) {
     g_app.disasm_addr = addr;
@@ -89,8 +131,8 @@ static void on_breakpoint(fgb_cpu* cpu, size_t bp, uint16_t addr) {
         set_disasm_addr(addr);
     }
 
-    fflush(stdout);
-    fflush(stderr);
+    (void)fflush(stdout);
+    (void)fflush(stderr);
 }
 
 static void on_step(fgb_cpu* cpu) {
@@ -110,18 +152,23 @@ static void on_step(fgb_cpu* cpu) {
         set_disasm_addr(pc);
     }
 
-    fflush(stdout);
-    fflush(stderr);
+    (void)fflush(stdout);
+    (void)fflush(stderr);
 }
 
 static void log_cpu_trace(fgb_cpu* cpu, uint16_t addr, uint32_t depth, const char* disasm) {
     (void)cpu;
-    fprintf(g_app.trace_file, "0x%04X:%*s%s\n", addr, 2 * (depth + 1), "", disasm);
+    (void)fprintf(g_app.trace_file, "0x%04X:%*s%s\n", addr, 2 * (depth + 1), "", disasm);
 }
 
 static fgb_emu* emu_init(const char* rom_path) {
+    if (!endswith(rom_path, ".gb")) {
+        log_error("Unsupported ROM format: %s (only .gb supported)", rom_path);
+        exit(1);
+    }
+
     FILE* f;
-    const errno_t err = fopen_s(&f, rom_path, "rb");
+    errno_t err = fopen_s(&f, rom_path, "rb");
     if (err) {
         printf("Failed to open file %s\n", rom_path);
         exit(1);
@@ -129,11 +176,43 @@ static fgb_emu* emu_init(const char* rom_path) {
 
     const size_t size = file_size(f);
     uint8_t* data = malloc(size);
+    if (!data) {
+        printf("Failed to allocate memory for ROM\n");
+        fclose(f);
+        exit(1);
+    }
+
     fread(data, 1, size, f);
     fclose(f);
 
-    fgb_emu* emu = fgb_emu_create(data, size);
+    fgb_emu* emu = fgb_emu_create(data, size, APU_SAMPLE_RATE, fgb_audio_push_samples, fgb_audio_get_driver());
     free(data);
+
+    g_app.rom_path = _strdup(rom_path);
+
+    // Try to load battery-backed RAM
+    char* save_path = save_path_from_rom(g_app.rom_path);
+    err = fopen_s(&f, save_path, "rb");
+    free(save_path);
+
+    if (err) {
+        // File does not exist, that's fine
+        return emu;
+    }
+
+    const size_t save_size = file_size(f);
+    uint8_t* save_data = malloc(save_size);
+    if (!save_data) {
+        printf("Failed to allocate memory for save data\n");
+        fclose(f);
+        return emu; // Not really a fatal error so just continue
+    }
+
+    fread(save_data, 1, save_size, f);
+    fclose(f);
+
+    fgb_cart_load_battery_buffered_ram(emu->cart, save_data, save_size);
+    free(save_data);
 
     return emu;
 }
@@ -310,8 +389,8 @@ static void render_line_sprites(void) {
     igEnd();
 }
 
-static void render_debug_options(void) {
-    igBegin("Debug Options", NULL, ImGuiWindowFlags_None);
+static void render_cpu_options(void) {
+    igBegin("CPU", NULL, ImGuiWindowFlags_None);
 
     if (igButton("Reset", (ImVec2) { 0, 0 })) {
         uint16_t bps[FGB_CPU_MAX_BREAKPOINTS];
@@ -448,7 +527,7 @@ static void render_debug_options(void) {
 
     igPopStyleColor(1);
 
-	fgb_cpu* volatile cpu = g_app.emu->cpu;
+    fgb_cpu* volatile cpu = g_app.emu->cpu;
 
     igPushID_Str("CPU_UI");
 
@@ -543,9 +622,9 @@ static void render_debug_options(void) {
         igPopID(); // Regs
 
         if (memcmp(&before_regs, &regs, sizeof(fgb_cpu_regs)) != 0) {
-			// Registers were modified, apply changes
+            // Registers were modified, apply changes
             cpu->regs = regs;
-		}
+        }
 
         // Right column: flags + misc
         igTableSetColumnIndex(1);
@@ -553,7 +632,7 @@ static void render_debug_options(void) {
         igSeparatorText("Flags");
         igPushID_Str("Flags");
 
-		bool c = fgb_cpu_get_flag(cpu, CPU_FLAG_C);
+        bool c = fgb_cpu_get_flag(cpu, CPU_FLAG_C);
         bool h = fgb_cpu_get_flag(cpu, CPU_FLAG_H);
         bool n = fgb_cpu_get_flag(cpu, CPU_FLAG_N);
         bool z = fgb_cpu_get_flag(cpu, CPU_FLAG_Z);
@@ -572,7 +651,7 @@ static void render_debug_options(void) {
 
         igSeparatorText("Misc");
 
-		bool ime = cpu->ime;
+        bool ime = cpu->ime;
         if (igCheckbox("IME", &ime)) {
             cpu->ime = ime;
         }
@@ -621,9 +700,9 @@ static void render_debug_options(void) {
         }
 
         if (modified) {
-			// Timer was modified, apply changes
+            // Timer was modified, apply changes
             cpu->timer = timer;
-		}
+        }
 
         igEndTable();
     }
@@ -644,9 +723,9 @@ static void render_debug_options(void) {
 }
 
 static void render_ppu_options(void) {
-	igBegin("PPU", NULL, ImGuiWindowFlags_None);
+    igBegin("PPU", NULL, ImGuiWindowFlags_None);
 
-	fgb_ppu* ppu = g_app.emu->ppu;
+    fgb_ppu* ppu = g_app.emu->ppu;
 
     if (igBeginTable("ppu_table", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV, (ImVec2) { 0, 0 }, 0.0f)) {
         igTableNextRow(0, 0);
@@ -657,7 +736,7 @@ static void render_ppu_options(void) {
         ImVec4 color;
         igColorConvertU32ToFloat4(&color, ppu->debug.window_color);
         if (igColorEdit4("Window Color", &color.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar)) {
-			ppu->debug.window_color = igColorConvertFloat4ToU32(color);
+            ppu->debug.window_color = igColorConvertFloat4ToU32(color);
         }
 
         igTableNextRow(0, 0);
@@ -675,12 +754,18 @@ static void render_ppu_options(void) {
         igTextUnformatted("-----", NULL);
 
         igTableNextRow(0, 0);
-		igTableSetColumnIndex(0);
+        igTableSetColumnIndex(0);
+        igText("App Framerate: %.2f FPS", g_app.render_framerate);
+        igText("Emu Framerate: %.2f FPS", g_app.emu_framerate);
+        igText("Emu Frametime: %.2fus", g_app.emu_update_time);
+
+        igTableNextColumn();
+        igTableNextColumn();
 
         struct { uint8_t x, y; } window_pos = {
             .x = ppu->window_pos.x,
             .y = ppu->window_pos.y,
-		};
+        };
 
         igSetNextItemWidth(200.0f);
         if (igInputScalarN("Window Pos", ImGuiDataType_U8, &window_pos.x, 2, NULL, NULL, "%d", ImGuiInputTextFlags_None)) {
@@ -691,31 +776,31 @@ static void render_ppu_options(void) {
         igEndTable();
 
         if (igCollapsingHeader_BoolPtr("Front Buffer", NULL, ImGuiTreeNodeFlags_None)) {
-	        igImage((ImTextureRef){NULL, g_app.framebuffer_textures[0]},
-	            (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
-	            (ImVec2){0, 0},
-	            (ImVec2){1, 1}
-			);
+            igImage((ImTextureRef){NULL, g_app.framebuffer_textures[0]},
+                (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
+                (ImVec2){0, 0},
+                (ImVec2){1, 1}
+            );
         }
 
         if (igCollapsingHeader_BoolPtr("Back Buffer", NULL, ImGuiTreeNodeFlags_None)) {
-	        igImage((ImTextureRef){NULL, g_app.framebuffer_textures[1]},
-	            (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
-	            (ImVec2){0, 0},
-	            (ImVec2){1, 1}
-			);
+            igImage((ImTextureRef){NULL, g_app.framebuffer_textures[1]},
+                (ImVec2){SCREEN_WIDTH * 2.0f, SCREEN_HEIGHT * 2.0f},
+                (ImVec2){0, 0},
+                (ImVec2){1, 1}
+            );
         }
 
         if (igCollapsingHeader_BoolPtr("Tile Map 0 ($9800)", NULL, ImGuiTreeNodeFlags_None)) {
             for (int y = 0; y < 32; y++) {
                 for (int x = 0; x < 32; x++) {
-					const uint8_t tile_index = ppu->vram[0x1800 + y * 32 + x];
+                    const uint8_t tile_index = ppu->vram[0x1800 + y * 32 + x];
                     float r, g, b;
                     igColorConvertHSVtoRGB((float)tile_index / 255.0f, 1.0f, 1.0f, &r, &g, &b);
                     igTextColored((ImVec4) { r, g, b, 1 }, "%02X", tile_index);
                     if (igBeginItemTooltip()) {
-						igText("(%d, %d)", x, y);
-						igEndTooltip();
+                        igText("(%d, %d)", x, y);
+                        igEndTooltip();
                     }
                     igSameLine(0, -1);
                 }
@@ -732,8 +817,8 @@ static void render_ppu_options(void) {
                     igColorConvertHSVtoRGB((float)tile_index / 255.0f, 1.0f, 1.0f, &r, &g, &b);
                     igTextColored((ImVec4) { r, g, b, 1 }, "%02X", tile_index);
                     if (igBeginItemTooltip()) {
-						igText("(%d, %d)", x, y);
-						igEndTooltip();
+                        igText("(%d, %d)", x, y);
+                        igEndTooltip();
                     }
                     igSameLine(0, -1);
                 }
@@ -741,7 +826,7 @@ static void render_ppu_options(void) {
                 igNewLine();
             }
         }
-	}
+    }
 
     igEnd();
 }
@@ -835,7 +920,7 @@ static void drop_callback(GLFWwindow* window, int count, const char** paths) {
     log_info("Loading ROM: %s", paths[0]);
     g_app.emu = emu_init(paths[0]);
 
-    configure_emu();
+    emu_configure();
     emu_start();
 }
 
@@ -884,61 +969,16 @@ static void setup_dockspace(void) {
     igEnd();
 }
 
-static int emu_run(void* arg) {
-    const fgb_emu* emu = arg;
-
-    const double frametime = 1.0 / FGB_SCREEN_REFRESH_RATE;
-    struct timespec ts = { 0 };
-    double error = 0.0;
-    
-    while (g_app.running && g_app.emulate) {
-        const double start_time = glfwGetTime();
-
-        fgb_cpu_run_frame(emu->cpu);
-
-        const double end_time = glfwGetTime();
-        const double elapsed = end_time - start_time;
-        const double to_sleep = frametime - elapsed + error;
-
-        if (to_sleep > 0.0) {
-            ts.tv_sec = (time_t)to_sleep;
-            ts.tv_nsec = (long)((to_sleep - (time_t)to_sleep) * 1e9);
-            (void)thrd_sleep(&ts, NULL);
-        }
-
-        const double actual_frametime = glfwGetTime() - start_time;
-        g_app.emu_framerate = 1.0 / actual_frametime;
-        g_app.emu_update_time = elapsed;
-
-        error = frametime - actual_frametime;
-    }
-
-    return 0;
-}
-
 bool emu_start(void) {
-    g_app.emulate = true;
-    if (thrd_create(&g_app.emu_thread, emu_run, g_app.emu) != thrd_success) {
-        log_error("Could not create emulator thread. Exiting");
-        return false;
-    }
-
     return true;
 }
 
 bool emu_stop(void) {
-    g_app.emulate = false;
     g_app.emu->cpu->mode = CPU_MODE_NORMAL; // Ensure CPU is not in halt or stop mode
-    int res = 0;
-    if (thrd_join(g_app.emu_thread, &res) != thrd_success) {
-        log_error("Could not join emulator thread. Exiting");
-        return false;
-    }
-
     return true;
 }
 
-void configure_emu(void) {
+void emu_configure(void) {
     set_disasm_addr(0x100);
     fgb_cpu_set_bp_callback(g_app.emu->cpu, on_breakpoint);
     fgb_cpu_set_step_callback(g_app.emu->cpu, on_step);
@@ -949,7 +989,24 @@ void configure_emu(void) {
     fgb_emu_set_log_level(g_app.emu, LOG_DEBUG);
     g_app.emu->cpu->trace_count = 0;
 
-    fgb_ppu_set_color_mode(g_app.emu->ppu, PPU_COLOR_MODE_NORMAL);
+    fgb_ppu_set_color_mode(g_app.emu->ppu, PPU_COLOR_MODE_TINTED);
+}
+
+void emu_try_save_ram(void) {
+    const uint8_t* ram = fgb_cart_get_battery_buffered_ram(g_app.emu->cart);
+    if (ram) {
+        char* save_path = save_path_from_rom(g_app.rom_path);
+        FILE* file = fopen(save_path, "wb");
+        if (!file) {
+            log_error("Could not open save file for writing: %s", save_path);
+            return;
+        }
+
+        free(save_path);
+
+        fwrite(ram, 1, fgb_cart_get_ram_size(g_app.emu->cart), file);
+        fclose(file);
+    }
 }
 
 int main(int argc, char** argv) {
@@ -979,6 +1036,10 @@ int main(int argc, char** argv) {
         printf("Could not open trace log file. Exiting\n");
         return 1;
     }
+
+    if (!fgb_audio_init(AUDIO_SAMPLE_RATE, APU_SAMPLE_RATE)) {
+        return 1;
+    }
     
     g_app.emu = emu_init(argv[1]);
     if (!g_app.emu) {
@@ -990,7 +1051,7 @@ int main(int argc, char** argv) {
         g_app.disasm_buffer_ptrs[i] = g_app.disasm_buffer[i];
     }
 
-    configure_emu();
+    emu_configure();
 
     glDebugMessageCallback(gl_debug_callback, NULL);
 
@@ -1008,7 +1069,7 @@ int main(int argc, char** argv) {
     uint32_t va, vb, ib;
     fgb_create_quad(&va, &vb, &ib);
 
-	g_app.framebuffer_textures[0] = screen_texture; // Front buffer
+    g_app.framebuffer_textures[0] = screen_texture; // Front buffer
     g_app.framebuffer_textures[1] = fgb_create_screen_texture(); // Back buffer
 
     glfwSetKeyCallback(window, key_callback);
@@ -1018,13 +1079,22 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    const double emu_frametime = 1.0 / FGB_SCREEN_REFRESH_RATE;
+
     double last_time = glfwGetTime();
     double last_title_update = last_time;
+    double accumulator = 0.0;
 
     while (!glfwWindowShouldClose(window)) {
         const double current_time = glfwGetTime();
         const double delta_time = current_time - last_time;
         last_time = current_time;
+        accumulator += delta_time;
+
+        while (accumulator >= emu_frametime) {
+            accumulator -= emu_frametime;
+            fgb_cpu_run_frame(g_app.emu->cpu);
+        }
 
         if (current_time - last_title_update >= 1.0) {
             char title[256];
@@ -1108,8 +1178,8 @@ int main(int argc, char** argv) {
 
         render_tilesets(tiles_per_row, block_textures);
         render_line_sprites();
-        render_debug_options();
-		render_ppu_options();
+        render_cpu_options();
+        render_ppu_options();
 
         igRender();
 
@@ -1126,16 +1196,15 @@ int main(int argc, char** argv) {
     }
 
     g_app.running = false;
-    if (thrd_join(g_app.emu_thread, NULL) != thrd_success) {
-        log_error("Could not join emulator thread.");
-    }
 
+    emu_try_save_ram();
     fgb_emu_destroy(g_app.emu);
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
 
     fclose(g_app.trace_file);
+    free(g_app.rom_path);
 
     igDestroyContext(NULL);
 

@@ -5,7 +5,7 @@
 #include <ulog.h>
 
 
-fgb_emu* fgb_emu_create(const uint8_t* cart_data, size_t cart_size) {
+fgb_emu* fgb_emu_create(const uint8_t* cart_data, size_t cart_size, uint32_t apu_sample_rate, fgb_apu_sample_callback sample_cb, void* userdata) {
     fgb_emu* emu = malloc(sizeof(fgb_emu));
     if (!emu) {
         log_error("Failed to allocate emulator");
@@ -20,12 +20,17 @@ fgb_emu* fgb_emu_create(const uint8_t* cart_data, size_t cart_size) {
 
     emu->ppu = fgb_ppu_create();
     if (!emu->ppu) {
-        fgb_cart_destroy(emu->cart);
         fgb_emu_destroy(emu);
         return NULL;
     }
 
-    emu->cpu = fgb_cpu_create(emu->cart, emu->ppu);
+    emu->apu = fgb_apu_create(apu_sample_rate, sample_cb, userdata);
+    if (!emu->apu) {
+        fgb_emu_destroy(emu);
+        return NULL;
+    }
+
+    emu->cpu = fgb_cpu_create(emu->cart, emu->ppu, emu->apu);
     if (!emu->cpu) {
         fgb_emu_destroy(emu);
         return NULL;
@@ -38,6 +43,8 @@ fgb_emu* fgb_emu_create(const uint8_t* cart_data, size_t cart_size) {
 
 void fgb_emu_destroy(fgb_emu* emu) {
     if (emu->cart) fgb_cart_destroy(emu->cart);
+    if (emu->ppu) fgb_ppu_destroy(emu->ppu);
+    if (emu->apu) fgb_apu_destroy(emu->apu);
     if (emu->cpu) fgb_cpu_destroy(emu->cpu);
     emu->cart = NULL;
     emu->cpu = NULL;
@@ -54,9 +61,10 @@ void fgb_emu_reset(fgb_emu* emu) {
 
     fgb_cpu_reset(emu->cpu);
     fgb_ppu_reset(emu->ppu);
+    fgb_apu_reset(emu->apu);
 }
 
-void fgb_emu_set_log_level(fgb_emu* emu, enum ulog_level level) {
+void fgb_emu_set_log_level(fgb_emu* emu, int level) {
     if (!emu || !emu->cpu) {
         log_error("Emulator or CPU not initialized");
         return;

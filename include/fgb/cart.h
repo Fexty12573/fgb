@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define FGB_CART_MAX_ROM_BANKS 256
+#define FGB_CART_MAX_ROM_BANKS 512
 #define FGB_CART_MAX_RAM_BANKS 16
 #define FGB_CART_ROM_BANK_SIZE 0x4000
 #define FGB_CART_RAM_BANK_SIZE 0x2000
@@ -57,7 +57,7 @@ enum fgb_cart_rom_size {
 
 enum fgb_cart_ram_size {
     RAM_SIZE_0      = 0x00, // No RAM
-	RAM_SIZE_2KIB   = 0x01, // 2 KiB (Never used)
+    RAM_SIZE_2KIB   = 0x01, // 2 KiB (Never used)
     RAM_SIZE_8KIB   = 0x02, // 8 KiB x1
     RAM_SIZE_32KIB  = 0x03, // 8 KiB x4
     RAM_SIZE_128KIB = 0x04, // 8 KiB x16
@@ -71,7 +71,7 @@ enum fgb_cart_dest_code {
 
 enum fgb_cart_mode {
     CART_MODE_SIMPLE = 0,
-	CART_MODE_ADVANCED = 1,
+    CART_MODE_ADVANCED = 1,
 };
 
 enum fgb_cart_rtc_register {
@@ -107,6 +107,7 @@ typedef struct fgb_cart {
     uint8_t* ram;
     size_t rom_size;
     uint8_t rom_bank;
+    uint8_t rom_bank_high;
     uint8_t ram_bank;
     uint8_t* rom_banks[FGB_CART_MAX_ROM_BANKS];
     uint8_t* ram_banks[FGB_CART_MAX_RAM_BANKS];
@@ -116,17 +117,24 @@ typedef struct fgb_cart {
         uint8_t last_latch;
         uint32_t cycles;
     } rtc;
-	bool ram_enabled;
+    bool ram_enabled;
+    bool has_ram_battery;
+    bool has_rumble;
+    bool rumble_enabled;
     uint32_t ram_size_bytes;
     uint8_t rom_bank_mask;
     enum fgb_cart_mode mode;
-	uint8_t(*read)(const struct fgb_cart* cart, uint16_t addr);
-	void(*write)(struct fgb_cart* cart, uint16_t addr, uint8_t value);
+    uint8_t(*read)(const struct fgb_cart* cart, uint16_t addr);
+    void(*write)(struct fgb_cart* cart, uint16_t addr, uint8_t value);
     void(*tick)(struct fgb_cart* cart);
 } fgb_cart;
 
 fgb_cart* fgb_cart_load(const uint8_t* data, size_t size);
 void fgb_cart_destroy(fgb_cart* cart);
+
+const uint8_t* fgb_cart_get_battery_buffered_ram(const fgb_cart* cart);
+bool fgb_cart_load_battery_buffered_ram(const fgb_cart* cart, const uint8_t* data, size_t size);
+size_t fgb_cart_get_ram_size(const fgb_cart* cart);
 
 uint8_t fgb_cart_read(const fgb_cart* cart, uint16_t addr);
 void fgb_cart_write(fgb_cart* cart, uint16_t addr, uint8_t value);

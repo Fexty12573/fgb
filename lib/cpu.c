@@ -38,31 +38,10 @@ static const struct fgb_init_value fgb_init_table[] = {
     { 0xFF00, 0xCF }, // P1
     { 0xFF01, 0x00 }, // SB
     { 0xFF02, 0x7E }, // SC
-    { 0xFF10, 0x80 }, // NR10
-    { 0xFF11, 0xBF }, // NR11
-    { 0xFF12, 0xF3 }, // NR12
-    { 0xFF13, 0xFF }, // NR13
-    { 0xFF14, 0xBF }, // NR14
-    { 0xFF16, 0x3F }, // NR21
-    { 0xFF17, 0x00 }, // NR22
-    { 0xFF18, 0xFF }, // NR23
-    { 0xFF19, 0xBF }, // NR24
-    { 0xFF1A, 0x7F }, // NR30
-    { 0xFF1B, 0xFF }, // NR31
-    { 0xFF1C, 0x9F }, // NR32
-    { 0xFF1D, 0xFF }, // NR33
-    { 0xFF1E, 0xBF }, // NR34
-    { 0xFF20, 0xFF }, // NR41
-    { 0xFF21, 0x00 }, // NR42
-    { 0xFF22, 0x00 }, // NR43
-    { 0xFF23, 0xBF }, // NR44
-    { 0xFF24, 0x77 }, // NR50
-    { 0xFF25, 0xF3 }, // NR51
-    { 0xFF26, 0xF1 }, // NR52
 };
 
 
-fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu) {
+fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu) {
     fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
     if (!cpu) {
         log_error("Failed to allocate CPU");
@@ -73,6 +52,7 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu) {
 
     memset(cpu, 0, sizeof(fgb_cpu));
 
+    cpu->apu = apu;
     cpu->ppu = ppu;
     fgb_ppu_set_cpu(ppu, cpu);
 
@@ -81,11 +61,12 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu) {
     fgb_mmu_init(&cpu->mmu, cart, cpu, NULL);
     fgb_cpu_reset(cpu);
     fgb_ppu_reset(ppu);
+    fgb_apu_reset(apu);
 
     return cpu;
 }
 
-fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, const fgb_mmu_ops* mmu_ops) {
+fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu, const fgb_mmu_ops* mmu_ops) {
     fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
     if (!cpu) {
         log_error("Failed to allocate CPU");
@@ -94,6 +75,7 @@ fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, const fgb_mmu_ops* mm
 
     memset(cpu, 0, sizeof(fgb_cpu));
 
+    cpu->apu = apu;
     cpu->ppu = ppu;
     fgb_ppu_set_cpu(ppu, cpu);
 
@@ -101,6 +83,8 @@ fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, const fgb_mmu_ops* mm
     fgb_io_init(&cpu->io, cpu);
     fgb_mmu_init(&cpu->mmu, cart, cpu, mmu_ops);
     fgb_cpu_reset(cpu);
+    fgb_ppu_reset(ppu);
+    fgb_apu_reset(apu);
 
     return cpu;
 }
@@ -114,15 +98,16 @@ void fgb_cpu_tick(fgb_cpu *cpu) {
     cpu->total_cycles++;
 
     if (cpu->test_mode) {
-		// Don't tick peripherals in test mode
+        // Don't tick peripherals in test mode
         return;
-	}
+    }
 
     fgb_timer_tick(&cpu->timer);
     fgb_ppu_tick(cpu->ppu);
+    fgb_apu_tick(cpu->apu);
     fgb_cart_tick(cpu->mmu.cart);
+
     // TODO:
-    // - Tick APU
     // - Maybe extract DMA handling from PPU tick?
     // - Maybe tick serial?
 }
@@ -150,6 +135,8 @@ void fgb_cpu_reset(fgb_cpu* cpu) {
 
     cpu->interrupt.flags = 0xE1;
     cpu->interrupt.enable = 0x00;
+
+    cpu->mmu.bootrom_mapped = true;
     
     for (size_t i = 0; i < sizeof(fgb_init_table) / sizeof(fgb_init_table[0]); i++) {
         fgb_mmu_write(cpu, fgb_init_table[i].addr, fgb_init_table[i].value);
@@ -488,11 +475,11 @@ void fgb_cpu_set_trace_callback(fgb_cpu *cpu, fgb_cpu_trace_callback callback) {
 }
 
 const fgb_instruction* fgb_cpu_fetch_instruction(fgb_cpu *cpu) {
-	const uint8_t opcode = fgb_cpu_fetch(cpu);
+    const uint8_t opcode = fgb_cpu_fetch(cpu);
     const fgb_instruction* ins = fgb_instruction_get(opcode);
-	assert(ins->opcode == opcode);
+    assert(ins->opcode == opcode);
 
-	return ins;
+    return ins;
 }
 
 uint8_t fgb_cpu_fetch(fgb_cpu *cpu) {
@@ -556,7 +543,7 @@ void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
     const uint8_t ienable = cpu->interrupt.enable;
     uint8_t iflags = cpu->interrupt.flags;
     const uint8_t irq = ienable & iflags;
-	uint16_t dest = 0x0000; // 0 for the case where SP is 0 so PC is pushed to IE and may disable interrupts
+    uint16_t dest = 0x0000; // 0 for the case where SP is 0 so PC is pushed to IE and may disable interrupts
 
     if      (irq & IRQ_VBLANK) { iflags &= ~IRQ_VBLANK; dest = fgb_interrupt_vector[IRQ_VBLANK]; }
     else if (irq & IRQ_LCD)    { iflags &= ~IRQ_LCD;    dest = fgb_interrupt_vector[IRQ_LCD];    }
@@ -568,7 +555,7 @@ void fgb_cpu_handle_interrupts(fgb_cpu* cpu) {
     cpu->ime = false;
     cpu->mode = CPU_MODE_NORMAL;
 
-	fgb_cpu_write_u8(cpu, --cpu->regs.sp, (cpu->regs.pc >> 0) & 0xFF);
+    fgb_cpu_write_u8(cpu, --cpu->regs.sp, (cpu->regs.pc >> 0) & 0xFF);
 
     fgb_cpu_m_tick(cpu);
     fgb_cpu_m_tick(cpu);
@@ -690,7 +677,7 @@ inline void fgb_push(fgb_cpu *cpu, uint16_t value) {
 static inline void fgb_ret_(fgb_cpu* cpu) {
     const uint8_t low = fgb_cpu_read_u8(cpu, cpu->regs.sp++);
     const uint8_t high = fgb_cpu_read_u8(cpu, cpu->regs.sp++);
-	cpu->regs.pc = (high << 8 | low) & 0xFFFF;
+    cpu->regs.pc = (high << 8 | low) & 0xFFFF;
     fgb_cpu_m_tick(cpu);
 
     if (cpu->call_depth > 0) {
@@ -965,7 +952,7 @@ void fgb_daa(fgb_cpu* cpu, const fgb_instruction* ins) {
         a += adj;
     }
 
-	cpu->regs.a = a & 0xFF;
+    cpu->regs.a = a & 0xFF;
     set_flag(z, cpu->regs.a == 0);
     set_flag(h, 0);
 }
