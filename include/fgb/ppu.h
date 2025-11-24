@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <threads.h>
 
+#include "types.h"
+
 #define PPU_VRAM_SIZE 0x2000
 #define PPU_OAM_SIZE  0xA0
 #define PPU_DMA_BYTES PPU_OAM_SIZE // Number of bytes transferred in a single DMA operation
@@ -96,7 +98,8 @@ typedef struct fgb_queue {
 } fgb_queue;
 
 typedef struct fgb_ppu {
-    uint8_t vram[PPU_VRAM_SIZE];
+    uint8_t vram0[PPU_VRAM_SIZE];
+    uint8_t vram1[PPU_VRAM_SIZE]; // CGB only
     uint8_t oam[PPU_OAM_SIZE];
     uint32_t framebuffers[PPU_FRAMEBUFFER_COUNT][SCREEN_WIDTH * SCREEN_HEIGHT];
     int framebuffer_x; // Current X position in the framebuffer (actual number of pixels drawn)
@@ -213,6 +216,8 @@ typedef struct fgb_ppu {
         };
     } obp[2];
 
+    uint8_t vbk; // CGB VRAM bank (0 or 1)
+
     struct {
         bool hide_bg;
         bool hide_sprites;
@@ -228,12 +233,16 @@ typedef struct fgb_ppu {
     int dma_cycles;
 
     struct fgb_cpu* cpu;
+
+    fgb_model model; // DMG or CGB
 } fgb_ppu;
 
 
 fgb_ppu* fgb_ppu_create(void);
+fgb_ppu* fgb_ppu_create_with_model(fgb_model model);
 void fgb_ppu_destroy(fgb_ppu* ppu);
 void fgb_ppu_set_cpu(fgb_ppu* ppu, struct fgb_cpu* cpu);
+void fgb_ppu_set_model(fgb_ppu* ppu, fgb_model model);
 void fgb_ppu_reset(fgb_ppu* ppu);
 
 const uint32_t* fgb_ppu_get_front_buffer(const fgb_ppu* ppu);

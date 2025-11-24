@@ -6,6 +6,7 @@
 #include "cpu.h"
 #include "mmu.h"
 #include "ppu.h"
+#include "types.h"
 
 
 typedef struct fgb_emu {
@@ -14,10 +15,18 @@ typedef struct fgb_emu {
     fgb_ppu* ppu;
     fgb_apu* apu;
     fgb_cart* cart;
+    fgb_model model;
 } fgb_emu;
 
 
 fgb_emu* fgb_emu_create(const uint8_t* cart_data, size_t cart_size, uint32_t apu_sample_rate, fgb_apu_sample_callback sample_cb, void* userdata);
+// Extended create that lets callers pick the model and optional MMU ops for overrides.
+fgb_emu* fgb_emu_create_ex(const uint8_t* cart_data, size_t cart_size,
+                           fgb_model model,
+                           uint32_t apu_sample_rate,
+                           fgb_apu_sample_callback sample_cb,
+                           void* userdata,
+                           const fgb_mmu_ops* mmu_ops);
 void fgb_emu_destroy(fgb_emu* emu);
 void fgb_emu_reset(fgb_emu* emu);
 

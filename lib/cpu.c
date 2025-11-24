@@ -41,7 +41,7 @@ static const struct fgb_init_value fgb_init_table[] = {
 };
 
 
-fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu) {
+fgb_cpu* fgb_cpu_create_ex(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu, fgb_model model, const fgb_mmu_ops* mmu_ops) {
     fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
     if (!cpu) {
         log_error("Failed to allocate CPU");
@@ -54,11 +54,13 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu) {
 
     cpu->apu = apu;
     cpu->ppu = ppu;
+    cpu->model = model;
     fgb_ppu_set_cpu(ppu, cpu);
 
     fgb_timer_init(&cpu->timer, cpu);
     fgb_io_init(&cpu->io, cpu);
-    fgb_mmu_init(&cpu->mmu, cart, cpu, NULL);
+    fgb_mmu_init(&cpu->mmu, cart, cpu, mmu_ops);
+    cpu->mmu.model = model;
     fgb_cpu_reset(cpu);
     fgb_ppu_reset(ppu);
     fgb_apu_reset(apu);
@@ -66,27 +68,12 @@ fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu) {
     return cpu;
 }
 
+fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu) {
+    return fgb_cpu_create_ex(cart, ppu, apu, FGB_MODEL_DMG, NULL);
+}
+
 fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu, const fgb_mmu_ops* mmu_ops) {
-    fgb_cpu* cpu = malloc(sizeof(fgb_cpu));
-    if (!cpu) {
-        log_error("Failed to allocate CPU");
-        return NULL;
-    }
-
-    memset(cpu, 0, sizeof(fgb_cpu));
-
-    cpu->apu = apu;
-    cpu->ppu = ppu;
-    fgb_ppu_set_cpu(ppu, cpu);
-
-    fgb_timer_init(&cpu->timer, cpu);
-    fgb_io_init(&cpu->io, cpu);
-    fgb_mmu_init(&cpu->mmu, cart, cpu, mmu_ops);
-    fgb_cpu_reset(cpu);
-    fgb_ppu_reset(ppu);
-    fgb_apu_reset(apu);
-
-    return cpu;
+    return fgb_cpu_create_ex(cart, ppu, apu, FGB_MODEL_DMG, mmu_ops);
 }
 
 void fgb_cpu_destroy(fgb_cpu* cpu) {

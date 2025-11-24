@@ -9,9 +9,11 @@
 #include "timer.h"
 #include "io.h"
 #include "ppu.h"
+#include "types.h"
 
-#define FGB_WRAM_SIZE   (0x1000 + 0x1000) // 2x 8 KiB Banks
-#define FGB_HRAM_SIZE   0x7F
+#define FGB_WRAM_BANK_SIZE 0x1000
+#define FGB_WRAM_BANKS     8 // Only first 2 accessible in DMG mode
+#define FGB_HRAM_SIZE      0x7F
 
 
 typedef struct fgb_mmu {
@@ -21,7 +23,7 @@ typedef struct fgb_mmu {
             size_t ext_data_size;
         };
         struct {
-            uint8_t wram[FGB_WRAM_SIZE];
+            uint8_t wram[FGB_WRAM_BANKS * FGB_WRAM_BANK_SIZE];
             uint8_t hram[FGB_HRAM_SIZE];
         };
     };
@@ -39,6 +41,9 @@ typedef struct fgb_mmu {
     uint16_t(*read_u16)(const struct fgb_mmu* mmu, uint16_t addr);
     bool use_ext_data;
     bool bootrom_mapped;
+    uint8_t wbk; // WRAM Bank (CGB only)
+
+    fgb_model model; // DMG or CGB
 } fgb_mmu;
 
 typedef struct fgb_mmu_ops {

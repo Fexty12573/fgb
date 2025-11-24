@@ -62,6 +62,15 @@ fgb_ppu* fgb_ppu_create(void) {
     ppu->obj_palette.colors[2] = 0xFF606060; // Color 2: Dark Gray
     ppu->obj_palette.colors[3] = 0xFF000000; // Color 3: Black
 
+    ppu->model = FGB_MODEL_DMG;
+
+    return ppu;
+}
+
+fgb_ppu* fgb_ppu_create_with_model(fgb_model model) {
+    fgb_ppu* ppu = fgb_ppu_create();
+    if (!ppu) return NULL;
+    ppu->model = model;
     return ppu;
 }
 
@@ -74,8 +83,13 @@ void fgb_ppu_set_cpu(fgb_ppu* ppu, fgb_cpu* cpu) {
     ppu->cpu = cpu;
 }
 
+void fgb_ppu_set_model(fgb_ppu* ppu, fgb_model model) {
+    ppu->model = model;
+}
+
 void fgb_ppu_reset(fgb_ppu* ppu) {
-    memset(ppu->vram, 0, sizeof(ppu->vram));
+    memset(ppu->vram0, 0, sizeof(ppu->vram0));
+    memset(ppu->vram1, 0, sizeof(ppu->vram1));
     memset(ppu->oam, 0, sizeof(ppu->oam));
     memset(ppu->framebuffers, 0, sizeof(ppu->framebuffers));
     memset(ppu->line_sprites, 0xFF, sizeof(ppu->line_sprites));
@@ -182,7 +196,7 @@ uint8_t fgb_tile_get_pixel(const fgb_tile* tile, uint8_t x, uint8_t y) {
 }
 
 int fgb_ppu_get_tile_id_old(const fgb_ppu* ppu, int tile_map, int x, int y) {
-    return ppu->vram[TILE_OFFSET(tile_map, x, y)];
+    return ppu->vram0[TILE_OFFSET(tile_map, x, y)];
 }
 
 int fgb_ppu_get_tile_id(const fgb_ppu* ppu) {
@@ -196,7 +210,7 @@ int fgb_ppu_get_tile_id(const fgb_ppu* ppu) {
         offset += TILE_MAP_OFFSET(ppu->lcd_control.bg_tile_map);
     }
 
-    return ppu->vram[offset];
+    return ppu->vram0[offset];
 }
 
 int fgb_ppu_get_current_tile_y(const fgb_ppu* ppu) {
@@ -210,11 +224,11 @@ int fgb_ppu_get_current_tile_y(const fgb_ppu* ppu) {
 const fgb_tile* fgb_ppu_get_tile_data(const fgb_ppu* ppu, int tile_id, bool is_sprite) {
     if (is_sprite || ppu->lcd_control.bg_wnd_tiles == 1) {
         // Use tile blocks 0 and 1
-        return (fgb_tile*)&ppu->vram[TILE_DATA_OFFSET(0, tile_id)];
+        return (fgb_tile*)&ppu->vram0[TILE_DATA_OFFSET(0, tile_id)];
     }
 
     const int tile_block = tile_id > 127 ? 1 : 2; // Tile ID > 127 uses block 1, otherwise block 2
-    return (fgb_tile*)&ppu->vram[TILE_DATA_OFFSET(tile_block, tile_id % 128)];
+    return (fgb_tile*)&ppu->vram0[TILE_DATA_OFFSET(tile_block, tile_id % 128)];
 }
 
 uint32_t fgb_ppu_get_bg_color(const fgb_ppu* ppu, fgb_pixel pixel) {
@@ -459,6 +473,10 @@ void fgb_ppu_write(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
         ppu->window_pos.x = value;
         break;
 
+    case 0xFF4F:
+        ppu->vbk = value & 0x01;
+        break;
+
     default:
         break;
     }
@@ -504,6 +522,9 @@ uint8_t fgb_ppu_read(const fgb_ppu* ppu, uint16_t addr) {
     case 0xFF4B:
         return ppu->window_pos.x;
 
+    case 0xFF4F:
+        return ppu->vbk | 0xFE; // Unused bits are always 1
+
     default:
         break;
     }
@@ -516,7 +537,11 @@ void fgb_ppu_write_vram(fgb_ppu* ppu, uint16_t addr, uint8_t value) {
        return;
     }
 
-    ppu->vram[addr] = value;
+    if (ppu->model == FGB_MODEL_CGB && ppu->vbk == 1) {
+        ppu->vram1[addr] = value;
+    } else {
+        ppu->vram0[addr] = value;
+    }
 }
 
 uint8_t fgb_ppu_read_vram(const fgb_ppu* ppu, uint16_t addr) {
@@ -524,7 +549,11 @@ uint8_t fgb_ppu_read_vram(const fgb_ppu* ppu, uint16_t addr) {
        return 0xFF;
     }
 
-    return ppu->vram[addr];
+    if (ppu->model == FGB_MODEL_CGB && ppu->vbk == 1) {
+        return ppu->vram1[addr];
+    }
+
+    return ppu->vram0[addr];
 }
 
 void fgb_ppu_write_oam(fgb_ppu* ppu, uint16_t addr, uint8_t value) {

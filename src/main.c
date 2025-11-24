@@ -794,7 +794,7 @@ static void render_ppu_options(void) {
         if (igCollapsingHeader_BoolPtr("Tile Map 0 ($9800)", NULL, ImGuiTreeNodeFlags_None)) {
             for (int y = 0; y < 32; y++) {
                 for (int x = 0; x < 32; x++) {
-                    const uint8_t tile_index = ppu->vram[0x1800 + y * 32 + x];
+                    const uint8_t tile_index = ppu->vram0[0x1800 + y * 32 + x];
                     float r, g, b;
                     igColorConvertHSVtoRGB((float)tile_index / 255.0f, 1.0f, 1.0f, &r, &g, &b);
                     igTextColored((ImVec4) { r, g, b, 1 }, "%02X", tile_index);
@@ -812,7 +812,7 @@ static void render_ppu_options(void) {
         if (igCollapsingHeader_BoolPtr("Tile Map 1 ($9C00)", NULL, ImGuiTreeNodeFlags_None)) {
             for (int y = 0; y < 32; y++) {
                 for (int x = 0; x < 32; x++) {
-                    const uint8_t tile_index = ppu->vram[0x1C00 + y * 32 + x];
+                    const uint8_t tile_index = ppu->vram0[0x1C00 + y * 32 + x];
                     float r, g, b;
                     igColorConvertHSVtoRGB((float)tile_index / 255.0f, 1.0f, 1.0f, &r, &g, &b);
                     igTextColored((ImVec4) { r, g, b, 1 }, "%02X", tile_index);

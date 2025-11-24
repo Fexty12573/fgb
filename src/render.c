@@ -96,7 +96,7 @@ uint32_t fgb_create_tile_block_texture(int tiles_per_row) {
 }
 
 void fgb_upload_tile_block_texture(uint32_t texture_id, int tiles_per_row, const fgb_ppu* ppu, int tile_block, const fgb_palette* pal) {
-    const fgb_tile* tiles = (const fgb_tile*)(&ppu->vram[TILE_BLOCK_VRAM_OFFSET(tile_block)]);
+    const fgb_tile* tiles = (const fgb_tile*)(&ppu->vram0[TILE_BLOCK_VRAM_OFFSET(tile_block)]);
 
     if (!s_texture_data) {
         s_texture_data = malloc(TILE_BLOCK_SIZE_RGBA);

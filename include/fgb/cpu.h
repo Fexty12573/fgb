@@ -7,6 +7,7 @@
 #include "io.h"
 #include "instruction.h"
 #include "ppu.h"
+#include "types.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -106,6 +107,8 @@ typedef struct fgb_cpu {
     fgb_ppu* ppu;
     fgb_apu* apu;
 
+    fgb_model model; // DMG or CGB
+
     bool test_mode;
     
     bool ime;
@@ -137,6 +140,8 @@ typedef struct fgb_cpu {
 
 fgb_cpu* fgb_cpu_create(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu);
 fgb_cpu* fgb_cpu_create_with(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu, const fgb_mmu_ops* mmu_ops);
+// Extended create that allows choosing model and custom MMU ops
+fgb_cpu* fgb_cpu_create_ex(fgb_cart* cart, fgb_ppu* ppu, fgb_apu* apu, fgb_model model, const fgb_mmu_ops* mmu_ops);
 void fgb_cpu_destroy(fgb_cpu* cpu);
 
 void fgb_cpu_tick(fgb_cpu* cpu); // Tick 1 T-cycle

@@ -22,8 +22,10 @@
 
 
 static void fgb_mmu_reset(fgb_mmu* mmu);
-static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value);
-static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr);
+static void fgb_mmu_write_dmg(fgb_mmu* mmu, uint16_t addr, uint8_t value);
+static uint8_t fgb_mmu_read_dmg(const fgb_mmu* mmu, uint16_t addr);
+static void fgb_mmu_write_cgb(fgb_mmu* mmu, uint16_t addr, uint8_t value);
+static uint8_t fgb_mmu_read_cgb(const fgb_mmu* mmu, uint16_t addr);
 static uint16_t fgb_mmu_read_u16(const fgb_mmu* mmu, uint16_t addr);
 
 static const uint8_t dmg_bootrom[] = {
@@ -104,6 +106,7 @@ void fgb_mmu_init(fgb_mmu* mmu, fgb_cart* cart, fgb_cpu* cpu, const fgb_mmu_ops*
     mmu->ppu = cpu->ppu;
     mmu->apu = cpu->apu;
     mmu->cpu = cpu;
+    mmu->model = cpu->model;
 
     if (ops) {
         mmu->reset = ops->reset;
@@ -118,8 +121,8 @@ void fgb_mmu_init(fgb_mmu* mmu, fgb_cart* cart, fgb_cpu* cpu, const fgb_mmu_ops*
         }
     } else {
         mmu->reset = fgb_mmu_reset;
-        mmu->write_u8 = fgb_mmu_write;
-        mmu->read_u8 = fgb_mmu_read;
+        mmu->write_u8 = mmu->model == FGB_MODEL_DMG ? fgb_mmu_write_dmg : fgb_mmu_write_cgb;
+        mmu->read_u8 = mmu->model == FGB_MODEL_DMG ? fgb_mmu_read_dmg : fgb_mmu_read_cgb;
         mmu->read_u16 = fgb_mmu_read_u16;
     }
 
@@ -130,9 +133,10 @@ void fgb_mmu_reset(fgb_mmu* mmu) {
     memset(mmu->wram, 0, sizeof(mmu->wram));
     memset(mmu->hram, 0, sizeof(mmu->hram));
     mmu->bootrom_mapped = true;
+    mmu->wbk = 1;
 }
 
-static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
+static void fgb_mmu_write_dmg(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
     // Cart
     if (addr < 0x8000) {
         fgb_cart_write(mmu->cart, addr, value);
@@ -209,7 +213,7 @@ static void fgb_mmu_write(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
     log_error("Unmapped memory write to 0x%04X", addr);
 }
 
-static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
+static uint8_t fgb_mmu_read_dmg(const fgb_mmu* mmu, uint16_t addr) {
     // Bootrom
     if (mmu->bootrom_mapped && addr < 0x100) {
         return dmg_bootrom[addr];
@@ -275,8 +279,171 @@ static uint8_t fgb_mmu_read(const fgb_mmu* mmu, uint16_t addr) {
     return 0xFF; // Return a default value for unmapped reads
 }
 
+void fgb_mmu_write_cgb(fgb_mmu* mmu, uint16_t addr, uint8_t value) {
+    // Cart
+    if (addr < 0x8000) {
+        fgb_cart_write(mmu->cart, addr, value);
+        return;
+    }
+
+    // VRAM (>= 0x8000)
+    if (addr < 0xA000) {
+        fgb_ppu_write_vram(mmu->ppu, addr - 0x8000, value);
+        return;
+    }
+
+    // External RAM Bank (>= 0xA000)
+    if (addr < 0xC000) {
+        fgb_cart_write(mmu->cart, addr, value);
+        return;
+    }
+
+    if (addr < 0xD000) {
+        // WRAM Bank 0
+        mmu->wram[addr - 0xC000] = value;
+        return;
+    }
+
+    if (addr < 0xE000) {
+        // WRAM Bank 1-7
+        mmu->wram[addr + (mmu->wbk * FGB_WRAM_BANK_SIZE) - 0xC000] = value;
+        return;
+    }
+
+    // ECHO RAM (>= 0xE000)
+    if (addr < 0xFE00) {
+        // Maps directly to C000 - DDFF
+        mmu->wram[addr - 0xE000] = value;
+        return;
+    }
+
+    // OAM (>= 0xFE00)
+    if (addr < 0xFEA0) {
+        fgb_ppu_write_oam(mmu->ppu, addr - 0xFE00, value);
+        return;
+    }
+
+    if (addr >= 0xFF04 && addr <= 0xFF07) {
+        fgb_timer_write(mmu->timer, addr, value);
+        return;
+    }
+
+    if (addr >= 0xFF10 && addr < 0xFF40) {
+        fgb_apu_write(mmu->apu, addr, value);
+        return;
+    }
+
+    if (addr >= 0xFF40 && addr < 0xFF4C || addr == 0xFF4F) {
+        fgb_ppu_write(mmu->ppu, addr, value);
+        return;
+    }
+
+    if (addr == 0xFF50) {
+        mmu->bootrom_mapped = false;
+        return;
+    }
+
+    if (addr == 0xFF70) {
+        mmu->wbk = value ? value & 0x07 : 1;
+        return;
+    }
+
+    if (addr == 0xFFFF || addr == 0xFF0F) {
+        fgb_cpu_write(mmu->cpu, addr, value);
+        return;
+    }
+
+    if (addr >= 0xFF00 && addr < 0xFF80) {
+        fgb_io_write(mmu->io, addr, value);
+        return;
+    }
+
+    // HRAM
+    if (addr >= 0xFF80 && addr < 0xFFFF) {
+        mmu->hram[addr - 0xFF80] = value;
+        return;
+    }
+
+    log_error("Unmapped memory write to 0x%04X", addr);
+}
+
+uint8_t fgb_mmu_read_cgb(const fgb_mmu* mmu, uint16_t addr) {
+    // Bootrom
+    if (mmu->bootrom_mapped && addr < 0x100) {
+        return dmg_bootrom[addr];
+    }
+
+    // Cart
+    if (addr < 0x8000) {
+        return fgb_cart_read(mmu->cart, addr);
+    }
+
+    // VRAM (>= 0x8000)
+    if (addr < 0xA000) {
+        return fgb_ppu_read_vram(mmu->ppu, addr - 0x8000);
+    }
+
+    // External RAM Bank (>= 0xA000)
+    if (addr < 0xC000) {
+        return fgb_cart_read(mmu->cart, addr);
+    }
+
+    if (addr < 0xD000) {
+        // WRAM Bank 0
+        return mmu->wram[addr - 0xC000];
+    }
+
+    if (addr < 0xE000) {
+        // WRAM Bank 1-7
+        return mmu->wram[addr + (mmu->wbk * FGB_WRAM_BANK_SIZE) - 0xC000];
+    }
+
+    // ECHO RAM (>= 0xE000)
+    if (addr < 0xFE00) {
+        // Maps directly to C000 - DDFF
+        return mmu->wram[addr - 0xE000];
+    }
+
+    // OAM (>= 0xFE00)
+    if (addr < 0xFEA0) {
+        return fgb_ppu_read_oam(mmu->ppu, addr - 0xFE00);
+    }
+
+    if (addr >= 0xFF04 && addr <= 0xFF07) {
+        return fgb_timer_read(mmu->timer, addr);
+    }
+
+    if (addr >= 0xFF10 && addr < 0xFF40) {
+        return fgb_apu_read(mmu->apu, addr);
+    }
+
+    if (addr >= 0xFF40 && addr < 0xFF4C || addr == 0xFF4F) {
+        return fgb_ppu_read(mmu->ppu, addr);
+    }
+
+    if (addr == 0xFF70) {
+        return mmu->wbk;
+    }
+
+    if (addr == 0xFFFF || addr == 0xFF0F) {
+        return fgb_cpu_read(mmu->cpu, addr);
+    }
+
+    if (addr >= 0xFF00 && addr < 0xFF80) {
+        return fgb_io_read(mmu->io, addr);
+    }
+
+    // HRAM
+    if (addr >= 0xFF80 && addr < 0xFFFF) {
+        return mmu->hram[addr - 0xFF80];
+    }
+
+    log_error("Unmapped memory read from 0x%04X", addr);
+    return 0xFF; // Return a default value for unmapped reads
+}
+
 static uint16_t fgb_mmu_read_u16(const fgb_mmu* mmu, uint16_t addr) {
-    const uint16_t lower = fgb_mmu_read(mmu, addr);
-    const uint16_t upper = fgb_mmu_read(mmu, addr + 1);
+    const uint16_t lower = mmu->read_u8(mmu, addr);
+    const uint16_t upper = mmu->read_u8(mmu, addr + 1);
     return upper << 8 | lower;
 }
